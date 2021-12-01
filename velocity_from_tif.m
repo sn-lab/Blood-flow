@@ -366,7 +366,7 @@ if keepgoing
         % Loop through lines
         npoints = 0;
         first = 1; 
-        last = first+WinSize;
+        last = first+WinSize-1;
         Result = [];
         Slope = 2;
         
@@ -406,7 +406,7 @@ if keepgoing
           
             Result = vertcat(Result, veldata);
             first = first + WinPixelsDown
-            last = first+WinSize;
+            last = first+WinSize-1;
             npoints = npoints+1;
         end
         
@@ -460,11 +460,11 @@ if fid ~= -1
     [ny, nx] = size(first);
     
     % get first and last frame and line index
-    startframe = floor(startline/ny) + 1;
-    startinframeline = startline - (startframe-1)*ny;
+    startframe = ceil(startline/ny);
+    startinframeline = rem(startline-1, ny)+1;
     
-    endframe = floor(endline/ny) + 1;
-    endinframeline = endline - (endframe-1)*ny;
+    endframe = ceil(endline/ny);
+    endinframeline = rem(endline-1, ny)+1;
     
     
 
