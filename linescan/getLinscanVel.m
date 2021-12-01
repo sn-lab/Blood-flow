@@ -1,4 +1,4 @@
-function [] = velocity_from_tif
+function Result = getLinescanVel(varargin)
 % Process linescan files and calculate velocity
 % Data file should be in greyscale, '.tif' format. This program assumes the data
 % is stored as sequential images and that there is no gap in time between
@@ -39,388 +39,175 @@ function [] = velocity_from_tif
 % nn62@cornell.edu
 % last mod 02-07-09
 
+% INPUTS
+p = inputParser();
+p.addOptional('Openfile','',@ischar);
+% TODO: these should probably be required
+p.addOptional('msPerLine',0.6,@(x) isnumeric(x)&&isscalar(x));
+p.addOptional('umPerPx',0.1,@(x) isnumeric(x)&&isscalar(x));
+% TODO: more strict validation functions
+p.addOptional('WinSize',75,@(x) isnumeric(x)&&isscalar(x));
+p.addOptional('WinPixelsDown',50,@(x) isnumeric(x)&&isscalar(x));
+% TODO: these should probably be moved up to calling function
+p.addOptional('WinLeft',[],@(x) isnumeric(x)&&isscalar(x));
+p.addOptional('WinRight',[],@(x) isnumeric(x)&&isscalar(x));
+p.addOptional('Maxlines',inf);
+p.addOptional('UseAvg',false,@islogical);
+p.addOptional('errorcheck',false,@islogical);
+p.addParameter('Method','Radon',@(x) any(strcmp(x, {'Radon', 'SVD'})))
+% TODO: allow user to flip image for opposite velocity?
+% if I_sign==0
+%     I=fliplr(I);
+% end
 
-% Ask to go through new files or not
-button = questdlg('New files to look at individually?',...
-    'New files','Yes','No', 'Yes');
-if strcmp(button,'Yes')
-    newfiles = 1;
-elseif strcmp(button,'No')
-    newfiles = 0;
-    keepgoing = 1;
+p.parse(varargin{:});
+
+% TODO: Probably don't need to reassign most of these
+Tfactor = 1/p.Results.msPerLine; % ypixel per ms
+Xfactor = p.Results.umPerPx; % microns per xpixel
+WinSize = p.Results.WinSize;
+WinPixelsDown = p.Results.WinPixelsDown;
+WinLeft = p.Results.WinLeft;
+WinRight = p.Results.WinRight;
+Maxlines = p.Results.Maxlines;
+UseAvg = p.Results.UseAvg;
+errorcheck = p.Results.errorcheck;
+
+%    % actual data used is only center circle ~70% of area (square window)
+%  % number of pixels between top of last window and next window
+
+% TODO: allow output as CSV?
+
+% TODO: make sure all output files are being saved in input directory;
+% Get input folder and file
+if isempty(p.Results.Openfile)
+    % Get file to open
+    [fname,pname] = uigetfile('*.*');
+    Openfile = fullfile(pname, fname);
+    disp(Openfile);
+else
+    Openfile = p.Results.Openfile;
+    [pname,fname] = fileparts(Openfile);
 end
 
-% let user choose files and select region of interest
-if newfiles == 1; % User wants to enter new files
-    errorcheck = 0 ;
 
 
-    OpenNameTemp = [];
-    FnameTemp = [];
-    FileTimeTemp = [];
-    WinLefts = [];
-    WinRights = [];
-    Npics = [];
-    Tfactors = [];
-    Xfactors =[];
-    UseAvgs = [];
+%   fileinfo = imfinfo(Openfile);
 
-    Npic = 0;
-
-
-
-    % Running parameters
-    prompt={'Always subtract average? (N/Y)'};
-    def={'N'};
-    dlgTitle='Processing parameters';
-    lineNo=1;
-    answer=inputdlg(prompt,dlgTitle,lineNo,def,'on');
-    if strcmp(answer{1},'N')
-        alwaysuseavg = 0;
-    else
-        alwaysuseavg = 1;
-        useavg = 1;
-    end
-
-
-    morefiles = 1;
-    while morefiles
-        % Get file to open         
-        pause (0.1);
-        [fname,pname] = uigetfile('*.*');
-        Openfile = [pname, fname]
-        cd(pname);
-
-        fileinfo = imfinfo(Openfile);
-        [maxframes, scrap] = size(fileinfo);
-
-        % get time file was created
-        info= dir(pname);
-        fnames = {};
-        times = {};
-        nfiles = length(info);
-        for i = 1:nfiles
-            fnames = strvcat(fnames,char(info(i).name));
-            times = strvcat(times,char(info(i).date));
-            if strcmp(char(info(i).name), fname)
-                filetime = char(info(i).date);
-                continue
-            end
-        end
-
+    % get time file was created
+    info = dir(Openfile);
+    filetime = info.date;
         
-        % get info for each file
-
-        % Calibration factors
-        % Calculate Tfactor (number of pixels per ms)
-        prompt={'ms per line', 'microns per pixel'};
-        def={'2', '1'};
-        dlgTitle='Conversion factors';
-        lineNo=1;
-        answer2=inputdlg(prompt,dlgTitle,lineNo,def,'on'); 
-        Tfactor = 1/str2double(cell2mat(answer2(1))); % ypixel per ms
-        Xfactor = str2double(cell2mat(answer2(2))); % microns per xpixel
-
-
-
-        
-        figdisp = figure;
-
-        % USER CHOOSES RELEVANT AREA FOR ANALYSIS
-        % show 1 frame at a time
-        done = 0;
-        framenumber = 1;
-
-        showlines = imread(Openfile,1);
-        [numlines, nx] = size(showlines);
-        
-        if numlines>500;
-            showlines = showlines(1:500, :);
-        end;
-        
-        imagesc(showlines); f_niceplot;
-        title({[fname];['frame:', num2str(framenumber)]});
-
-        % get coordinates of rrbox
-        fignum = gcf;
-        xlabel('Select region of interest');
-        Roi = round(getrect);
-        WinLeft = Roi(1);
-        width = Roi(3);
-        WinRight = Roi(1) + Roi(3);
-        rectangle('Position', [WinLeft, 1, width, numlines],'EdgeColor', 'r');
-        xlabel ('Space - keep this box, f-forward, b-back, s-skip forward,  n-new box');
-        while not(done);
-            waitforbuttonpress;
-            fignum = gcf;
-            pressed = get(fignum, 'CurrentCharacter');
-            if pressed == ' ' % space for keep this box
-                done = 1;
-            elseif pressed == 'f' % forward 1 frame
-                if framenumber < maxframes;
-                    framenumber = framenumber +1;
-                    showlines = imread(Openfile, framenumber);
-                else
-                    beep;
-                    display ('no more frames')
-                end
-
-                imagesc(showlines); f_niceplot;
-                title({[fname];['frame:', num2str(framenumber)]});
-
-                rectangle('Position', [WinLeft, 1, width, numlines],'EdgeColor', 'r');
-                xlabel ('Space - keep this box, f-forward, b-back, s-skip forward,  n-new box');
-
-            elseif pressed == 'b' % back 1 frame
-                if framenumber > 1
-                    framenumber = framenumber - 1;
-                    showlines = imread(Openfile, framenumber);
-                else
-                    beep;
-
-                end
-
-                imagesc(showlines); f_niceplot;
-                title({[fname];['frame:', num2str(framenumber)]});
-
-                rectangle('Position', [WinLeft, 1, width, numlines],'EdgeColor', 'r');
-                xlabel ('Space - keep this box, f-forward, b-back, s-skip forward,  n-new box');
-
-
-            elseif pressed == 's' % skip 10 frames forward
-                if framenumber + 10 <= maxframes;
-                    framenumber = framenumber + 10;
-                    showlines = imread(Openfile, framenumber);
-                else
-                    beep;
-                end
-
-                imagesc(showlines); f_niceplot;
-                title({[fname];['frame:', num2str(framenumber)]});
-
-                rectangle('Position', [WinLeft, 1, width, numlines],'EdgeColor', 'r');
-                xlabel ('Space - keep this box, f-forward, b-back, s-skip forward,  n-new box');
-
-            elseif pressed == 'n'
-                clf;
-                imagesc(showlines); f_niceplot;
-                title({[fname];['frame:', num2str(framenumber)]});
-                xlabel('Select region of interest');
-                Roi = round(getrect)
-                WinLeft = Roi(1);
-                width = Roi(3);
-                WinRight = Roi(1) + Roi(3);
-                rectangle('Position', [WinLeft, 1, width, numlines],'EdgeColor', 'r');
-                xlabel ('Space - keep this box, f-forward, b-back, s-1skip forward,  n-new box');
-            else
-                beep;
-                display (' not a good key')
-            end; %if
-        end; %loop while not done
-
-
-        slope = 2;
-        
-        % Ask user if subtract average of linescans across from each block of
-        % data
-        if alwaysuseavg == 0
-            button = questdlg('Subtract average across linescans?',...
-                'Use average?','Yes','No', 'Yes');
-            if strcmp(button,'Yes')
-                useavg = 1;
-            elseif strcmp(button,'No')
-                useavg = 0;
-            end
-        end;
-                
-        % ask if more files?
-        button = questdlg('More files?',...
-            'Continue','Yes','No','Yes');
-        if strcmp(button,'Yes')
-            morefiles = 1;
-        elseif strcmp(button,'No')
-            morefiles = 0;
-        end
-        
-        close (figdisp);
-
-        
-        % saveinfo
-        OpenNameTemp = strvcat(OpenNameTemp, Openfile);
-        FnameTemp = strvcat(FnameTemp, fname);
-        FileTimeTemp = strvcat(FileTimeTemp,filetime); 
-        WinLefts = vertcat(WinLefts, WinLeft);
-        WinRights = vertcat(WinRights, WinRight);
-        Tfactors = vertcat(Tfactors, Tfactor);
-        Xfactors = vertcat(Xfactors, Xfactor);
-        UseAvgs = vertcat(UseAvgs, useavg);
-
-    end; % morefiles
-    
-    
-    OpenName = cellstr(OpenNameTemp);
-    Fname = cellstr(FnameTemp);
-    FileTime = cellstr(FileTimeTemp);
-    
-    
-    %  as a comma delimited text file
-    pause(0.1);
-    [filename, pathname] = uiputfile('*.csv', 'Comma delimited file save As');
-    Datafile = [pathname, filename];
-    
-    Datafile2 = [pathname, filename, 'bfdata.mat'];
-    save(Datafile2, 'OpenName','WinLefts', 'WinRights', 'Tfactors', 'Xfactors','UseAvgs'); 
-    
-    OpenName = strvcat('OpenName', OpenNameTemp);
-    Fname = strvcat('filename', FnameTemp);
-    FileTime = strvcat('Time',FileTimeTemp); 
-    WinLefts = strvcat('WinLefts',num2str(WinLefts));
-    WinRights = strvcat('WinRights', num2str(WinRights)); 
-    Tfactors = strvcat('Tfactors', num2str(Tfactors));
-    Xfactors = strvcat('Xfactors', num2str(Xfactors));
-    UseAvgs = strvcat('UseAvgs', num2str(UseAvgs));
-
-    commas = [];
-    [lines, col] = size(UseAvgs);
-    for i = 1:lines
-        commas(i,1) = ',';
-    end
-    tosave = horzcat((OpenName), commas, (WinLefts),commas, (WinRights), ...
-        commas,  (Tfactors), commas, (Xfactors), commas, (Fname), commas, ...
-        (FileTime), commas, (UseAvgs));
-
-
-    diary(Datafile)
-    tosave
-    diary off
-
-    button = questdlg('Calculate velocites now?',...
-        'Continue','Yes','No','Yes');
-    if strcmp(button,'Yes')
-        keepgoing = 1;
-    elseif strcmp(button,'No')
-        keepgoing = 0;
-    end
-    
-end; % if new files
+    %% Select bounding box
 
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % calculate velocities or diameters
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\
 
-if keepgoing 
     
-    % % GET SAVED DATA (optional)
-    if exist('Datafile2') == 1
-        load (Datafile2);
-    else
-        pause (0.1);
-        [filename3, pathname3] = uigetfile('*.*', 'parameter file (...bfdata.mat)');
-        Datafile3 = [pathname3, filename3];
-        load(Datafile3);
+% TODO: should use this default name or ask user?
+    %Datafile = [char(strrep(OpenName(i),'.tif',['--wpd', num2str(WinPixelsDown)])), date, '.mat'];
+    Datafile = [char(strrep(Openfile,'.tif',[' rawVel', num2str(WinPixelsDown),num2str(WinSize)])),'.mat'];
+
+
+    % read in image data and reshape
+    I = f_loadTiff(Openfile);
+    nPix = size(I, 2);
+    I = permute(I, [1,3,2]);
+    I = reshape(I, [], nPix);
+    nLines = size(I, 1);
+    
+    if isempty(WinLeft)
+        WinLeft = 1;
     end
-    [nfiles,z] = size(OpenName);
     
-    % For running continuously from setup 
-    clear showlines info
+    if isempty(WinRight)
+        WinRight = nPix;
+    end
     
+    Maxlines = min(Maxlines, nLines);
     
-    % Running parameters from user
-    prompt={'Number of time pixels per data point', 'time pixels between data points',...
-        'number of lines to process', 'Start with file #:', 'turn on display?'};
-    def={'75', '50', '50000', '1', 'no'};
-    dlgTitle='Processing parameters';
-    lineNo=1;
-    answer=inputdlg(prompt,dlgTitle,lineNo,def,'on');
-    WinSize =  str2double(answer(1));   % actual data used is only center circle ~70% of area (square window)
-    WinPixelsDown = str2double(answer(2)); % number of pixels between top of last window and next window
-    Maxlines =  str2double(answer(3)); %  total number of lines
-    startfilenumber = str2double(answer(4));
-    if strcmp(answer(5), 'no')
-        errorcheck = 0;
-    else
-        errorcheck = 1;
-    end;
+    % subtract average value of each column from image to take out vertical stripes
+    % TODO: should this happen frame-by-frame, block-by-block or over
+    % entire image??
+    % Before this was happening block-by-block which seems a bit sus
+    % Maybe should move out depening on which
+    if UseAvg
+        I = I-mean(I);
+    end
+%     [r c] = size(I);
+%     avgPixValues = ones(r,1)*mean(I);
+% 
+%     if UseAvg
+%         I = I-avgPixValues;
+%     end
+%     clear avgPixValues
+%     % TODO: move this out into calling function
+%     % Take out vertical stripes
+%     blocksize= size(block);
+%     avg = mean(block);
+%     avgs = ones([blocksize(1), 1])*avg;
+%     if useaverage
+%         block = block-avgs;
+%     end
+%     clear avgs avg;
+    
+    % Loop through lines
+    
+    % Calculate block indices
+    last = WinSize:WinPixelsDown:Maxlines;
+    first = last - WinSize + 1;
+    nWins = length(first);
 
+    % Initialize outputs
+    Result = zeros(nWins,10);
     
-    for i =startfilenumber:nfiles %%%%%%%%% Loop through all files
-        Openfile2 = char(OpenName(i));
-        %Datafile = [char(strrep(OpenName(i),'.tif',['--wpd', num2str(WinPixelsDown)])), date, '.mat'];
-        Datafile = [char(strrep(OpenName(i),'.tif',['SVDrawVel', num2str(WinPixelsDown)])),'.mat'];
-        
-        WinLeft = WinLefts(i,1); % leftmost pixel
-        WinRight = WinRights(i,1); % rightmost pixel
-        Tfactor = Tfactors(i, 1);
-        Xfactor = Xfactors(i, 1);
-        UseAvg = UseAvgs(i,1);
-        
-        
-        % read in data
-        
-        FR1 = 1;
-        FRLast = 1; 
-        datachunk = [];
+    % Create waitbar
+    hWait = waitbar(0);
+    
+    % Pick function to calculate velocity
+    switch p.Results.Method
+        case 'Radon'
+            getLinescanVelFcn = @(block) method.getLinescanVelRadon(block, Tfactor, Xfactor);
+        case 'SVD'
+            getLinescanVelFcn = @(block) method.getLinescanVelSVD(block, Tfactor, Xfactor);
+    end
+    
+    for iWin = 1:1:nWins
+        % TODO: use im2double instead?
+        block = double(I(first(iWin):last(iWin), WinLeft: WinRight));
+        veldata = getLinescanVelFcn(block);
 
-        % Loop through lines
-        npoints = 0;
-        first = 1; 
-        last = first+WinSize-1;
-        Result = [];
-        Slope = 2;
-        
-        while last<Maxlines % loop thorugh lines
-            lines = f_get_lines_from_tiff(Openfile2, first, last);
-            if isempty(lines)
-                break;
-            end
-            [tny, tnx] = size(lines);
-            if tny < WinSize
-                break
-            end
-            
-            block = lines(:, WinLeft: WinRight);
-            if errorcheck == 1;
-                veldata = f_find_vel(block, Tfactor, Xfactor, Slope, UseAvg, 1);
-
-            else
-                veldata = f_find_vel(block, Tfactor, Xfactor, Slope, UseAvg);
-            end
-       
-        veldata(1) = first;
-        veldata(2) = npoints *WinPixelsDown/Tfactor;
-        % ---------------------------------------------
-            % For Debugging
-            if (errorcheck ==1) & (npoints< 20)
-                subplot(2,1,1);imagesc(lines); f_niceplot;
-                title(Openfile2)
-                subplot(2,1,2); imagesc(block); f_niceplot;title('block')
-                angle = acot(veldata(3)/Xfactor/Tfactor)*180/pi;
-                title([num2str(veldata(1)), ' vel:', num2str(veldata(3)), ' angle: ', num2str(angle)]);
-                xlabel('press a key to continue');
-                pause;
-            end
-            % ---------------------------------------------
-            veldata(5) = -1*acot(veldata(3)/Xfactor/Tfactor);
-          
-            Result = vertcat(Result, veldata);
-            first = first + WinPixelsDown
-            last = first+WinSize-1;
-            npoints = npoints+1;
+        veldata(1) = first(iWin);
+        veldata(2) = iWin*WinPixelsDown/Tfactor;
+    % ---------------------------------------------
+        % For Debugging
+        if (errorcheck ==1) && (npoints< 20)
+            subplot(2,1,1);imagesc(lines); f_niceplot;
+            title(Openfile)
+            subplot(2,1,2); imagesc(block); f_niceplot;title('block')
+            angle = acot(veldata(3)/Xfactor/Tfactor)*180/pi;
+            title([num2str(veldata(1)), ' vel:', num2str(veldata(3)), ' angle: ', num2str(angle)]);
+            xlabel('press a key to continue');
+            pause;
         end
-        
-        save(Datafile,'Result', 'Tfactor', 'WinPixelsDown');
-        
-        clear data data1 cropped Result Rotdata Small ecog shutter ekg BioRad time Stimulus Data;
+        % ---------------------------------------------
+        veldata(5) = -1*acot(veldata(3)/Xfactor/Tfactor);
 
-    end; % Loop for each file
-    
-    message = 'done'
-    beep
-    beep
-    
-end % if keepgoing 
+        Result(iWin, :) = veldata;
+    end
+
+    waitbar(1, hWait, 'Done!')
+
+    % TODO: this should be moved out into calling function 
+    save(Datafile,'Result', 'Tfactor', 'WinPixelsDown','Openfile', 'filetime', 'WinLeft', 'WinRight', 'Tfactor', 'Xfactor');
+
+%     clear data data1 cropped Result Rotdata time Data;
+
+    close(hWait);
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -434,316 +221,41 @@ axis image; colormap gray;
 set(gca, 'XTickLabel', [])
 set(gca, 'YTickLabel', [])
 
-% --------------------------------------------------------------
-function data = f_get_lines_from_tiff(filename, startline, endline)
-% filename - path
-% startline - 1st line to get
-% endline - last line to get (inclusive)
-% OUTPUT:
-% data - matrix of values, [] if something is not valid
-
-
-% temp
-% startline = 204800;
-% endline = 204900;
-% [fname,pname] = uigetfile('*.*');
-% filename = [pname, fname];
-
-
-data = [];
-
-% error check to see if really a file
-fid = fopen(filename);
-if fid ~= -1
-    fclose(fid);
-    first = imread(filename);
-    [ny, nx] = size(first);
+function I = f_loadTiff(filename)
+    T = Tiff(filename, 'r');
     
-    % get first and last frame and line index
-    startframe = ceil(startline/ny);
-    startinframeline = rem(startline-1, ny)+1;
-    
-    endframe = ceil(endline/ny);
-    endinframeline = rem(endline-1, ny)+1;
-    
-    
-
-    for nframe = startframe:endframe
-        try 
-            tempframe = imread(filename, startframe);
-        catch
-            disp('invalid linenumber');
-            break;
-            
-        end;
-        
-        if startframe == endframe
-            data = tempframe(startinframeline:endinframeline, :);
-            
-        elseif nframe == startframe
-            data = vertcat(data, tempframe(startinframeline:end,:));
-        elseif nframe == endframe;
-            data = vertcat(data, tempframe(1:endinframeline, :));
-        else
-            data = vertcat(data, tempframe);
-        end;
-        
-        
-    end;
-else
-    data = [];
-    disp('invalid file');
-end
-
-data = double(data);
-
-
-% ---------------------------------------------------------
-function Result = f_find_vel(small, varargin)
-% function Result = f_find_vel(small, (Tfactor), (Xfactor), (slope), (useaverage), (debug))
-% based on RotMatOpt19_rand_time
-% IN: small = 1 frame
-%               Xfactor (microns/pixel)
-%               Tfactor (pixels/ms)
-%               slope= 1 for positive, 0 for neg, 2 for automatically pick
-%               slope
-%               useaverage = 1 to subtract our average across lines, 0 for
-%               slow capilliaries; if not used, sets = 1;
-%               debug: if exists, will show each frame
-% OUT: Result: (preserved data structure)
-%       unneeded numbers are = 0
-%       column     3) Velocity (mm/s) + veloctiy is in x-dir (RBC's from
-%                             left to right)
-%                       4) Sep
-%                       5) Angle (true angle of data unmodified by this
-%                       function, positive is RBC move left to right)
-%                       6) Flux
-% 07-11-03: Make an option to not use average across the frame. Useful for
-% slow capillaries.
-%12-20-04: Finds Flux based on method developed empirically: Thresholds
-% image of rotated block data by average; Takes an average projection, and
-% thresholds; Finds derivative and zerocrossings to find RBC edges. Uses a
-% ratio of standard deviation of intensities across time and space to
-% reject some data points. 
-
-%%%%TEMP
-do_debug = 0;
-
-% Get Tfactor and Xfactor from input parameters
-if length(varargin) == 0 % no user parameters
-    Xfactor = 205/500*250/512; % microns/pixel
-    Tfactor = 1;
-    slopeset = 0;
-    useaverage = 1
-elseif length(varargin) == 1 % user gave at least  Tfactor
-    Tfactor= cell2mat(varargin(1));
-    Xfactor = 205/500*250/512;
-    slopeset = 0;
-    useaverage = 1
-elseif length(varargin) == 2 % gives Xfactor
-    Tfactor= cell2mat(varargin(1));
-    Xfactor = cell2mat(varargin(2));
-    slopeset = 0;
-    useaverage = 1
-elseif length(varargin) == 3 % gives a slope
-    Tfactor= cell2mat(varargin(1));
-    Xfactor = cell2mat(varargin(2));
-    slopenum = cell2mat(varargin(3));
-    if slopenum ==2
-        slopeset = 0;
-    else % = 1 or =0;
-        slopeset = 1;
+    % Extracting Matlab Type Name and Bits per Sample
+    typeName = T.getTag('SampleFormat');
+    if typeName == 1
+       typeName = 'uint';
+    elseif typeName  == 2
+       typeName = 'int';
+    else
+       error('Tiff Sample Format is not supported. It must be UInt or Int');
     end
-    useaverage = 1
-elseif length(varargin) ==4
-    Tfactor= cell2mat(varargin(1));
-    Xfactor = cell2mat(varargin(2));
-    slopenum = cell2mat(varargin(3));
-    if slopenum ==2
-        slopeset = 0;
-    else % = 1 or =0;
-        slopeset = 1;
+    bits = T.getTag('BitsPerSample');
+    type = [typeName, num2str(bits)];
+
+    % Get Image Height and Width
+    width = T.getTag('ImageWidth');
+    height = T.getTag('ImageLength');
+            
+    % Get number of images in Tiff Stack
+    T.setDirectory(1);
+    numImages = 1;
+    while ~T.lastDirectory
+       numImages = numImages + 1;
+       T.nextDirectory();
     end
-    useaverage = cell2mat(varargin(4));
-elseif length(varargin) ==5 % use the debugging option
-    Tfactor= cell2mat(varargin(1));
-    Xfactor = cell2mat(varargin(2));
-    slopenum = cell2mat(varargin(3));
-    if slopenum ==2
-        slopeset = 0;
-    else % = 1 or =0;
-        slopeset = 1;
+
+    I = zeros(height, width, numImages, type);
+    % Setting data for each Image File Directory
+    for IFD = 1:1:numImages
+       T.setDirectory(IFD);
+       I(:,:,IFD) = T.read();
     end
-    useaverage = cell2mat(varargin(4));
-    do_debug = 1;
-end
-
-block = small;
-
-% Take out vertical stripes
-blocksize= size(block);
-avg = mean(block);
-avgs = ones([blocksize(1), 1])*avg;
-if useaverage
-    block = block-avgs;
-end
-clear avgs, avg;
-
-% Make data square
-oldY= blocksize(1);
-oldX = blocksize(2);
-
-oldXs = ones(oldY,1)*[1:oldX];
-oldYs = transpose(ones(oldX,1)*[1:oldY]);
-if oldY > oldX;
-    newX = oldY; newY = oldY;
-    step = (oldX - 1)/(newX-1);
-    Xs = ones(newY,1)*([1:step:oldX]);
-    Ys = transpose(ones(newY,1)*[1:newY]);
-    small = interp2(oldXs, oldYs,block, Xs, Ys);
-    TfactorUse = Tfactor;
-    XfactorUse = Xfactor/newX*oldX;
-elseif oldY < oldX
-    newX = oldX; newY = oldX;
-    Xs = ones(newX,1)*[1:newY];
-    step = (oldY - 1)/(newY-1);
-    Ys = transpose(ones(newY,1)*([1:step:oldY]));
-    small= interp2(oldXs, oldYs,block, Xs, Ys);
-    TfactorUse = Tfactor*newY/oldY;
-    XfactorUse = Xfactor;
-    
-else
-    TfactorUse = Tfactor;
-    XfactorUse = Xfactor;
-end; % resize block
-
-
-[WinSize, WinSizeX] = size(small);
-% Pre-calculated numbers for RotateFindSVD, etc
-MaxXRot = floor(WinSize/sqrt(2));
-HalfMaxX = round(MaxXRot/2);
-MidSmall = round(WinSize/2);
-
-% PARAMETERS
-
-Steps = 50;
-XRAMP = ones(WinSize, 1)*[1:WinSize] - MidSmall;
-YRAMP = MidSmall-[1:WinSize]'*ones(1, WinSize);
-X = ones(MaxXRot, 1)*[1:MaxXRot] - HalfMaxX;
-Y = HalfMaxX-[1:MaxXRot]'*ones(1, MaxXRot);
-method = '*linear'; % method for interpolate in rotating image
-SepTol = 0.01;
-
-
-size(small);
-% Left over variables from origianal program are set = 0
-WinNumber = 0; Nframes = 0; WinPerFrame = 0; WinTop = 0; Period = 0;  WinPixelsDown = 0; 
-
-Slope = 1; % SLOPE IS NOW FOUND AUTOMATICALLY
-
-FoundMax = 0;       
-if Slope==1;            
-    MinTheta = 0;           % Starting negative value for angles of rotation
-    MaxTheta = pi/2;       % Starting positive limit for angles of rotation
-elseif Slope == 0 ;      
-    MinTheta = -pi/2;        % Starting negative value for angles of rotation
-    MaxTheta = 0;   % Starting positive limit for angles of rotation
-end;
-
-loops = 1;
-OldSep = 0;
-while (not(FoundMax))
-    dTheta = (MaxTheta - MinTheta)/Steps;
-    Sep = zeros(1, Steps+1);
-    Angles = zeros(1, Steps+1);
-    
-    % loop for each value of dTheta
-    for count = 1:Steps+1;        
-        Angles(count) = MaxTheta - (count-1) * dTheta;
-        [Sep(count), Rotdata] = RotateFindSVD(XRAMP, YRAMP, X, Y, small,Angles(count),method);
-    end;
-    
-    [MaxSep, Index] = max(Sep);
-    if Index==1;   % rotation is too large and positive
-        if MaxTheta >= pi/2
-            Result = [Nframes,WinTop, 50, 0, 0,0, (Nframes-1)*Period + 1/1000/TfactorUse*(WinNumber-1)*WinPixelsDown, Nframes,0,0];
-            FoundMax = 1;
-        else
-            MaxTheta = MaxTheta + 3*dTheta;
-            MinTheta = Angles(Index+1);
-        end
-    elseif Index == Steps +1; % rotation is too large and negative  
-        if MinTheta <= -pi/2
-            Result = [Nframes,WinTop,50, 0, 0,0,(Nframes-1) *Period + 1/1000/TfactorUse*(WinNumber-1)*WinPixelsDown, Nframes,0,0];
-            FoundMax = 1;
-        else
-            MinTheta = MinTheta - 3*dTheta;
-            MaxTheta = Angles(Index-1);
-      end
-else % found a good rotation
-      if abs(MaxSep - OldSep)<SepTol;
-            [scrap, Rotdata] = RotateFindSVD(XRAMP, YRAMP, X, Y, small,Angles(Index),method);
-            
-            % check orientation of rotated matrix
-            vertavg = mean(Rotdata,1);
-            horzavg = mean(Rotdata, 2);
-            vertstd = std(vertavg);
-            horzstd = std(horzavg);
-            if horzstd> vertstd %lines are horizontal
-                  vel = 1*TfactorUse*XfactorUse*abs(cot(Angles(Index)));
-                  angle = Angles(Index);
-                  angletrue =  acot(cot(Angles(Index))*TfactorUse*XfactorUse);  
-                  % Threshold Rotdata before getting lineout
-                  AvgRotdata = mean(mean(Rotdata));
-                  ThreshRotdata = Rotdata > AvgRotdata;
-                  LineOut1 = mean(ThreshRotdata,2);
-                  xvar = mean(std(Rotdata,0,1));
-                  tvar = mean(std(Rotdata,0,2));
-            else % lines are vertical
-                  vel = -1*TfactorUse*XfactorUse*abs(tan(Angles(Index)));
-                  angle = atan(cot(Angles(Index)));
-                  angletrue =  -acot(cot(Angles(Index))*TfactorUse*XfactorUse);
-                  AvgRotdata = mean(mean(Rotdata));
-                  ThreshRotdata = Rotdata > AvgRotdata;
-                  LineOut1 = mean(ThreshRotdata,1);
-                  xvar = mean(std(Rotdata,0,2));
-                  tvar = mean(std(Rotdata,0,1));
-            end
-            
-            % FLUX
-            Flux = NaN;
-            Flux2 = NaN;
-            Flux3 = NaN;
-
-
-            Result = [Nframes,WinTop, vel, MaxSep, angletrue, Flux,(Nframes-1)*Period + 1/1000/TfactorUse*(WinNumber-1)*WinPixelsDown, WinNumber, Flux2, Flux3];
-            FoundMax = 1; %set flag for exiting loop for window
-            
-        else % new anlge range
-            MaxTheta = Angles(Index)+2*dTheta;
-            MinTheta = Angles(Index)-2*dTheta;
-            OldSep = MaxSep;
-        end
-    end %if index
-    
-    loops = 1+ loops;
-    if loops > 100
-        Result = [Nframes,WinTop, 50, 0, 0, 0,(Nframes-1)*Period + 1/1000/TfactorUse*(WinNumber-1)*WinPixelsDown, Nframes,0,0];
-        FoundMax = 1;
-        vel =0;
-    end;
-end % while loop for thetas
-
-% ------------------------------------------------------
-function [seperability, Rotdata] = RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method)
-%RotateFindSVD - rotates the center square matrix of small, returns seperability
-% 090406 changed isnan
-warpx = X*cos(Theta) +Y*sin(Theta) ;
-                warpy = (-X*sin(Theta)+ Y*cos(Theta)) ;
-                Rotdata = interp2(XRAMP, YRAMP, small, warpx, warpy, method);
-                Rotdata(isnan(Rotdata))= mean(Rotdata(~isnan(Rotdata)));
-                S = svd(Rotdata);
-                seperability = S(1)^2/sum(S.^2);
+        
+    close(T);    
 
 
 
