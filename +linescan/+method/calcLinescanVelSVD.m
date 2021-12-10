@@ -72,10 +72,10 @@ MidSmall = round(WinSize/2);
 % PARAMETERS
 
 Steps = 50;
-XRAMP = ones(WinSize, 1)*[1:WinSize] - MidSmall;
-YRAMP = MidSmall-[1:WinSize]'*ones(1, WinSize);
-X = ones(MaxXRot, 1)*[1:MaxXRot] - HalfMaxX;
-Y = HalfMaxX-[1:MaxXRot]'*ones(1, MaxXRot);
+XRAMP = ones(WinSize, 1)*(1:WinSize) - MidSmall;
+YRAMP = MidSmall-(1:WinSize)'*ones(1, WinSize);
+X = ones(MaxXRot, 1)*(1:MaxXRot) - HalfMaxX;
+Y = HalfMaxX-(1:MaxXRot)'*ones(1, MaxXRot);
 method = '*linear'; % method for interpolate in rotating image
 SepTol = 0.01;
 
@@ -84,16 +84,9 @@ size(small);
 % Left over variables from origianal program are set = 0
 WinNumber = 0; Nframes = 0; WinPerFrame = 0; WinTop = 0; Period = 0;  WinPixelsDown = 0; 
 
-Slope = 1; % SLOPE IS NOW FOUND AUTOMATICALLY
-
-FoundMax = 0;       
-if Slope==1
-    MinTheta = 0;           % Starting negative value for angles of rotation
-    MaxTheta = pi/2;       % Starting positive limit for angles of rotation
-elseif Slope == 0
-    MinTheta = -pi/2;        % Starting negative value for angles of rotation
-    MaxTheta = 0;   % Starting positive limit for angles of rotation
-end
+FoundMax = 0;
+MinTheta = 0;           % Starting negative value for angles of rotation
+MaxTheta = pi/2;       % Starting positive limit for angles of rotation
 
 loops = 1;
 OldSep = 0;

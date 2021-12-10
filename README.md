@@ -21,7 +21,7 @@ This repository contains the most up-to-date version of the linescan code used f
 
 - 5. **avgDiameterinROI.m** extracts the diameter of the vessel by selecting a rectangular area on the vessel manually. gives value in pixels and user needs to use um/pixel conversion factor to transform to microns
 
-**UN THE FILES IN THE ORDER THEY APPEAR IN THIS README. YOU MAY SKIP #1 AND #2 IF YOU ALREADY HAVE MS/LINE AND PIXEL/UM conversion factors**
+**USE THE FILES IN THE ORDER THEY APPEAR IN THIS README. YOU MAY SKIP #1 AND #2 IF YOU ALREADY HAVE MS/LINE AND PIXEL/UM conversion factors**
 
 ## From share_instructions_2012-03-08.pdf (Revised on 3/8/2012):
 ### extractVelTiffShared.m

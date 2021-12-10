@@ -41,18 +41,13 @@ function Result = getLinescanVel(varargin)
 
 % INPUTS
 p = inputParser();
-p.addOptional('Openfile','',@ischar);
+p.addRequired('I',@ismatrix);
 % TODO: these should probably be required
-p.addOptional('msPerLine',0.6,@(x) isnumeric(x)&&isscalar(x));
-p.addOptional('umPerPx',0.1,@(x) isnumeric(x)&&isscalar(x));
+p.addRequired('msPerLine',0.6,@(x) isnumeric(x)&&isscalar(x));
+p.addRequired('umPerPx',0.1,@(x) isnumeric(x)&&isscalar(x));
 % TODO: more strict validation functions
 p.addOptional('WinSize',75,@(x) isnumeric(x)&&isscalar(x));
-p.addOptional('WinPixelsDown',50,@(x) isnumeric(x)&&isscalar(x));
-% TODO: these should probably be moved up to calling function
-p.addOptional('WinLeft',[],@(x) isnumeric(x)&&isscalar(x));
-p.addOptional('WinRight',[],@(x) isnumeric(x)&&isscalar(x));
-p.addOptional('Maxlines',inf);
-p.addOptional('UseAvg',false,@islogical);
+p.addOptional('WinStep',50,@(x) isnumeric(x)&&isscalar(x));
 p.addOptional('errorcheck',false,@islogical);
 p.addParameter('Method','Radon',@(x) any(strcmp(x, {'Radon', 'SVD'})))
 % TODO: allow user to flip image for opposite velocity?
@@ -66,7 +61,7 @@ p.parse(varargin{:});
 Tfactor = 1/p.Results.msPerLine; % ypixel per ms
 Xfactor = p.Results.umPerPx; % microns per xpixel
 WinSize = p.Results.WinSize;
-WinPixelsDown = p.Results.WinPixelsDown;
+WinPixelsDown = p.Results.WinStep;
 WinLeft = p.Results.WinLeft;
 WinRight = p.Results.WinRight;
 Maxlines = p.Results.Maxlines;
@@ -76,19 +71,7 @@ errorcheck = p.Results.errorcheck;
 %    % actual data used is only center circle ~70% of area (square window)
 %  % number of pixels between top of last window and next window
 
-% TODO: allow output as CSV?
 
-% TODO: make sure all output files are being saved in input directory;
-% Get input folder and file
-if isempty(p.Results.Openfile)
-    % Get file to open
-    [fname,pname] = uigetfile('*.*');
-    Openfile = fullfile(pname, fname);
-    disp(Openfile);
-else
-    Openfile = p.Results.Openfile;
-    [pname,fname] = fileparts(Openfile);
-end
 
 
 
@@ -112,48 +95,10 @@ end
     Datafile = [char(strrep(Openfile,'.tif',[' rawVel', num2str(WinPixelsDown),num2str(WinSize)])),'.mat'];
 
 
-    % read in image data and reshape
-    I = f_loadTiff(Openfile);
-    nPix = size(I, 2);
-    I = permute(I, [1,3,2]);
-    I = reshape(I, [], nPix);
-    nLines = size(I, 1);
+   
     
-    if isempty(WinLeft)
-        WinLeft = 1;
-    end
     
-    if isempty(WinRight)
-        WinRight = nPix;
-    end
-    
-    Maxlines = min(Maxlines, nLines);
-    
-    % subtract average value of each column from image to take out vertical stripes
-    % TODO: should this happen frame-by-frame, block-by-block or over
-    % entire image??
-    % Before this was happening block-by-block which seems a bit sus
-    % Maybe should move out depening on which
-    if UseAvg
-        I = I-mean(I);
-    end
-%     [r c] = size(I);
-%     avgPixValues = ones(r,1)*mean(I);
-% 
-%     if UseAvg
-%         I = I-avgPixValues;
-%     end
-%     clear avgPixValues
-%     % TODO: move this out into calling function
-%     % Take out vertical stripes
-%     blocksize= size(block);
-%     avg = mean(block);
-%     avgs = ones([blocksize(1), 1])*avg;
-%     if useaverage
-%         block = block-avgs;
-%     end
-%     clear avgs avg;
-    
+
     % Loop through lines
     
     % Calculate block indices
@@ -220,42 +165,6 @@ function [] = f_niceplot
 axis image; colormap gray;
 set(gca, 'XTickLabel', [])
 set(gca, 'YTickLabel', [])
-
-function I = f_loadTiff(filename)
-    T = Tiff(filename, 'r');
-    
-    % Extracting Matlab Type Name and Bits per Sample
-    typeName = T.getTag('SampleFormat');
-    if typeName == 1
-       typeName = 'uint';
-    elseif typeName  == 2
-       typeName = 'int';
-    else
-       error('Tiff Sample Format is not supported. It must be UInt or Int');
-    end
-    bits = T.getTag('BitsPerSample');
-    type = [typeName, num2str(bits)];
-
-    % Get Image Height and Width
-    width = T.getTag('ImageWidth');
-    height = T.getTag('ImageLength');
-            
-    % Get number of images in Tiff Stack
-    T.setDirectory(1);
-    numImages = 1;
-    while ~T.lastDirectory
-       numImages = numImages + 1;
-       T.nextDirectory();
-    end
-
-    I = zeros(height, width, numImages, type);
-    % Setting data for each Image File Directory
-    for IFD = 1:1:numImages
-       T.setDirectory(IFD);
-       I(:,:,IFD) = T.read();
-    end
-        
-    close(T);    
 
 
 
