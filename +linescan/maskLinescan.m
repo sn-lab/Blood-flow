@@ -1,9 +1,10 @@
-function [WinLeft, WinRight] = maskLinescan(I, method)
+function [WinLeft, WinRight] = maskLinescan(Openfile, method)
     switch method
         case 'Visual'
-            [WinLeft, WinRight] = maskLinescanVisual(I);
+            [WinLeft, WinRight] = maskLinescanVisual(Openfile);
         case 'Auto'
             [WinLeft, WinRight] = maskLinescanAuto(I);
+            error('Not supported');
     end
 end
 
@@ -32,7 +33,7 @@ end
     
 
     
-function [WinLeft, WinRight] = maskLinescanVisual(I)
+function [WinLeft, WinRight] = maskLinescanVisual(Openfile)
     % TODO: add option for automatic detection
     f = figure;
 
@@ -42,7 +43,7 @@ function [WinLeft, WinRight] = maskLinescanVisual(I)
     framenumber = 1;
 
     % TODO: deal with 2D/3D?
-    imshow(I(:,:,1), []);
+    imshow(imread(Openfile, 1), []);
 %     title({fname;['frame:', num2str(framenumber)]});
 
     % get coordinates of rrbox
@@ -54,8 +55,8 @@ function [WinLeft, WinRight] = maskLinescanVisual(I)
     r = drawrectangle('Color','r');
     uiwait;
 
-    WinLeft = r.Position(1);
-    WinRight = r.Position(1) + r.Position(3);
+    WinLeft = round(r.Position(1));
+    WinRight = round(r.Position(1) + r.Position(3));
 
     % DO this is 
     close (f);

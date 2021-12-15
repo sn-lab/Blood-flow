@@ -4,9 +4,9 @@ function linescanVelFromTiff(varargin)
     p.addOptional('WinSize',75,@(x) isnumeric(x)&&isscalar(x));
     p.addOptional('WinStep',50,@(x) isnumeric(x)&&isscalar(x));
     % TODO: should these be parameters?
-    p.addParameter('msPerLine',@(x) isnumeric(x)&&isscalar(x));
-    p.addParameter('umPerPx',@(x) isnumeric(x)&&isscalar(x));
-    p.addParameter('Mask','Visual',@ischar)
+    p.addParameter('msPerLine',[],@(x) isnumeric(x)&&isscalar(x));
+    p.addParameter('umPerPx',[],@(x) isnumeric(x)&&isscalar(x));
+    p.addParameter('Mask','Visual',@(x) ischar(x)||isvector(x))
     p.addParameter('Method','Radon',@ischar);
     p.addParameter('Maxlines',inf);
     p.addParameter('UseAvg',false,@islogical);
