@@ -1,4 +1,4 @@
-function Result = getLinescanVelRadon(varargin)
+function Result = calcLinescanVelRadon(varargin)
 %%
 
 % This function performs a Radon transform on an image prefiltered by

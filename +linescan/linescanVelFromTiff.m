@@ -1,10 +1,12 @@
 function linescanVelFromTiff(varargin)
     p = inputParser();
-    p.addOptional(filepath,'',@ischar)
-    p.addParameter('msPerLine',[],@(x) isnumeric(x)&&isscalar(x));
-    p.addParameter('umPerPx',[],@(x) isnumeric(x)&&isscalar(x));
-    p.addOptional('Mask','Auto',@ischar)
-     % TODO: these should probably be moved up to calling function
+    p.addOptional('filepath','',@ischar)
+    p.addOptional('WinSize',75,@(x) isnumeric(x)&&isscalar(x));
+    p.addOptional('WinStep',50,@(x) isnumeric(x)&&isscalar(x));
+    % TODO: should these be parameters?
+    p.addParameter('msPerLine',@(x) isnumeric(x)&&isscalar(x));
+    p.addParameter('umPerPx',@(x) isnumeric(x)&&isscalar(x));
+    p.addParameter('Mask','Visual',@ischar)
     p.addParameter('Method','Radon',@ischar);
     p.addParameter('Maxlines',inf);
     p.addParameter('UseAvg',false,@islogical);
@@ -16,7 +18,7 @@ function linescanVelFromTiff(varargin)
     % TODO: make sure all output files are being saved in input directory;
     % Get input folder and file
     % TODO: allow multi-select
-    if isempty(p.Results.Openfile)
+    if isempty(p.Results.filepath)
         % Get file to open
         [fname,pname] = uigetfile('*.*');
         Openfile = fullfile(pname, fname);
@@ -28,78 +30,68 @@ function linescanVelFromTiff(varargin)
     
     
     if isempty(p.Results.msPerLine)
-        % Try to get msPerLine from tiff file
+        % Try to get msPerLine from tiff file, check if matches
         % If not, prompt user
+    else
+        msPerLine = p.Results.msPerLine;
     end
     
     if isempty(p.Results.umPerPx)
-        % Try to get umPerPx from tiff file
+        % Try to get umPerPx from tiff file, check if matches
         % If not, prompt user
+    else
+        umPerPx = p.Results.umPerPx;
     end
-    
-    Maxlines = min(Maxlines, nLines);
     
     % subtract average value of each column from image to take out vertical stripes
     % TODO: should this happen frame-by-frame, block-by-block or over
     % entire image??
     % Before this was happening block-by-block which seems a bit sus
     % Maybe should move out depening on which
-    if UseAvg
-        I = I-mean(I);
+    
+    % read in image data and reshape
+    h = util.io.readTiffStack(Openfile);
+    I = permute(h.data(), [2,1,3]);
+    delete(h);
+    
+    % Mask linescan
+    if ischar(p.Results.Mask)
+        [left, right] = linescan.maskLinescan(I, p.Results.Mask);
+    else
+        left = p.Results.Mask(1);
+        right = p.Results.Mask(2);
     end
     
-     % read in image data and reshape
-    I = f_loadTiff(Openfile);
     nPix = size(I, 2);
     I = permute(I, [1,3,2]);
     I = reshape(I, [], nPix);
     nLines = size(I, 1);
     
-    if ischar(p.Results.Mask)
-        [left, right] = maskLinescan(I,p.Results.Mask);
-    else
-        left = p.Results.Mask(1);
-        right = p.Results.Mask(2);
-    end
-    % TODO: apply mask
+    Maxlines = min(p.Results.Maxlines, nLines);
     
-end
-
-
-% TODO: probably just use tiff reader instead
-function I = f_loadTiff(filename)
-    T = Tiff(filename, 'r');
+    % Get rid of vertical stripes?
+    if p.Results.UseAvg
+        I = I-mean(I);
+    end
     
-    % Extracting Matlab Type Name and Bits per Sample
-    typeName = T.getTag('SampleFormat');
-    if typeName == 1
-       typeName = 'uint';
-    elseif typeName  == 2
-       typeName = 'int';
-    else
-       error('Tiff Sample Format is not supported. It must be UInt or Int');
-    end
-    bits = T.getTag('BitsPerSample');
-    type = [typeName, num2str(bits)];
+    % Take requested section of image
+    I = I(1:Maxlines,round(left):round(right));
+    
+    % Run Linescan
+    errorcheck = false;
+    WinSize = p.Results.WinSize;
+    WinStep = p.Results.WinStep;
+    method = p.Results.Method;
+    Xfactor = umPerPx;
+    Tfactor = 1/msPerLine;
+    
+%     tic
+    Result = linescan.calcLinescanVel(I, msPerLine, umPerPx, WinSize, WinStep, errorcheck, 'Method', method);
+%     toc
+    
+    % TODO: save Result
+    % TODO: this should be moved out into calling function 
+    Datafile = [char(strrep(Openfile,'.tif',['_rawVel-', num2str(WinStep),'-',num2str(WinSize)])),'.mat'];
+    save(Datafile,'Openfile','Result','WinSize','WinStep','Tfactor','Xfactor','left', 'right');
 
-    % Get Image Height and Width
-    width = T.getTag('ImageWidth');
-    height = T.getTag('ImageLength');
-            
-    % Get number of images in Tiff Stack
-    T.setDirectory(1);
-    numImages = 1;
-    while ~T.lastDirectory
-       numImages = numImages + 1;
-       T.nextDirectory();
-    end
-
-    I = zeros(height, width, numImages, type);
-    % Setting data for each Image File Directory
-    for IFD = 1:1:numImages
-       T.setDirectory(IFD);
-       I(:,:,IFD) = T.read();
-    end
-        
-    close(T);
 end

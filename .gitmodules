@@ -1,6 +1,6 @@
-[submodule "+px2um"]
-	path = +px2um
-	url = https://github.com/sn-lab/Pixel-to-Micron
-[submodule "+io"]
-	path = +io
-	url = https://github.com/sn-lab/Image-IO
+[submodule "+util/+io"]
+	path = +util/+io
+	url = https://github.com/sn-lab/Image-IO.git
+[submodule "+util/+px2um"]
+	path = +util/+px2um
+	url = https://github.com/sn-lab/Pixel-to-Micron.git

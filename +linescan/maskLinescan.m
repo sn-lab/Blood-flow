@@ -8,7 +8,7 @@ function [WinLeft, WinRight] = maskLinescan(I, method)
 end
 
 function [WinLeft, WinRight] = maskLinescanAuto(I)
-    proj = max(I);
+    proj = max(I, [], [2,3]);
     proj = movmean(proj, round(length(proj)/32));
     % TODO: allow user to pass pctMax?
     TF = proj > 0.4*max(proj);
@@ -27,7 +27,7 @@ function [WinLeft, WinRight] = maskLinescanAuto(I)
     WinLeft = rise(iMaxW);
     WinRight = fall(iMaxW);
     %TODO: add an option for displaying the detected region
-    figure; imshow(I, []); drawrectangle('Position', [WinLeft, 1, WinRight-WinLeft, size(I,1)],'Color','r');
+%     figure; imshow(I(:,:,1), []); drawrectangle('Position', [WinLeft, 1, WinRight-WinLeft, size(I,1)],'Color','r');
 end
     
 
@@ -42,7 +42,7 @@ function [WinLeft, WinRight] = maskLinescanVisual(I)
     framenumber = 1;
 
     % TODO: deal with 2D/3D?
-    imshow(I, []);
+    imshow(I(:,:,1), []);
 %     title({fname;['frame:', num2str(framenumber)]});
 
     % get coordinates of rrbox

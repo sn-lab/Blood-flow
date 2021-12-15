@@ -1,4 +1,4 @@
-function Result = getLinescanVel(varargin)
+function Result = calcLinescanVel(varargin)
 % Process linescan files and calculate velocity
 % Data file should be in greyscale, '.tif' format. This program assumes the data
 % is stored as sequential images and that there is no gap in time between
@@ -43,8 +43,8 @@ function Result = getLinescanVel(varargin)
 p = inputParser();
 p.addRequired('I',@ismatrix);
 % TODO: these should probably be required
-p.addRequired('msPerLine',0.6,@(x) isnumeric(x)&&isscalar(x));
-p.addRequired('umPerPx',0.1,@(x) isnumeric(x)&&isscalar(x));
+p.addRequired('msPerLine',@(x) isnumeric(x)&&isscalar(x));
+p.addRequired('umPerPx',@(x) isnumeric(x)&&isscalar(x));
 % TODO: more strict validation functions
 p.addOptional('WinSize',75,@(x) isnumeric(x)&&isscalar(x));
 p.addOptional('WinStep',50,@(x) isnumeric(x)&&isscalar(x));
@@ -58,31 +58,15 @@ p.addParameter('Method','Radon',@(x) any(strcmp(x, {'Radon', 'SVD'})))
 p.parse(varargin{:});
 
 % TODO: Probably don't need to reassign most of these
+I = p.Results.I;
 Tfactor = 1/p.Results.msPerLine; % ypixel per ms
 Xfactor = p.Results.umPerPx; % microns per xpixel
 WinSize = p.Results.WinSize;
 WinPixelsDown = p.Results.WinStep;
-WinLeft = p.Results.WinLeft;
-WinRight = p.Results.WinRight;
-Maxlines = p.Results.Maxlines;
-UseAvg = p.Results.UseAvg;
 errorcheck = p.Results.errorcheck;
 
 %    % actual data used is only center circle ~70% of area (square window)
 %  % number of pixels between top of last window and next window
-
-
-
-
-
-%   fileinfo = imfinfo(Openfile);
-
-    % get time file was created
-    info = dir(Openfile);
-    filetime = info.date;
-        
-    %% Select bounding box
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -92,8 +76,6 @@ errorcheck = p.Results.errorcheck;
     
 % TODO: should use this default name or ask user?
     %Datafile = [char(strrep(OpenName(i),'.tif',['--wpd', num2str(WinPixelsDown)])), date, '.mat'];
-    Datafile = [char(strrep(Openfile,'.tif',[' rawVel', num2str(WinPixelsDown),num2str(WinSize)])),'.mat'];
-
 
    
     
@@ -102,7 +84,7 @@ errorcheck = p.Results.errorcheck;
     % Loop through lines
     
     % Calculate block indices
-    last = WinSize:WinPixelsDown:Maxlines;
+    last = WinSize:WinPixelsDown:size(I,1);
     first = last - WinSize + 1;
     nWins = length(first);
 
@@ -115,14 +97,14 @@ errorcheck = p.Results.errorcheck;
     % Pick function to calculate velocity
     switch p.Results.Method
         case 'Radon'
-            getLinescanVelFcn = @(block) method.getLinescanVelRadon(block, Tfactor, Xfactor);
+            getLinescanVelFcn = @(block) linescan.method.calcLinescanVelRadon(block, Tfactor, Xfactor);
         case 'SVD'
-            getLinescanVelFcn = @(block) method.getLinescanVelSVD(block, Tfactor, Xfactor);
+            getLinescanVelFcn = @(block) linescan.method.calcLinescanVelSVD(block, Tfactor, Xfactor);
     end
     
     for iWin = 1:1:nWins
         % TODO: use im2double instead?
-        block = double(I(first(iWin):last(iWin), WinLeft: WinRight));
+        block = double(I(first(iWin):last(iWin), :));
         veldata = getLinescanVelFcn(block);
 
         veldata(1) = first(iWin);
@@ -142,13 +124,12 @@ errorcheck = p.Results.errorcheck;
         veldata(5) = -1*acot(veldata(3)/Xfactor/Tfactor);
 
         Result(iWin, :) = veldata;
+        
+        waitbar(iWin/nWins, hWait);
     end
 
     waitbar(1, hWait, 'Done!')
-
-    % TODO: this should be moved out into calling function 
-    save(Datafile,'Result', 'Tfactor', 'WinPixelsDown','Openfile', 'filetime', 'WinLeft', 'WinRight', 'Tfactor', 'Xfactor');
-
+    
 %     clear data data1 cropped Result Rotdata time Data;
 
     close(hWait);
