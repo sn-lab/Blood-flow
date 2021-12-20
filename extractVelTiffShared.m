@@ -522,7 +522,7 @@ if Debug==0
     %Wait for user
     pause;  
 end
-
+ 
 
 if I_sign==1
     thetaMax = theta(n)-90;
@@ -583,17 +583,18 @@ if fid ~= -1
     [ny, nx] = size(first);
     
     % get first and last frame and line index
-    startframe = floor(startline/ny) + 1;
-    startinframeline = startline - (startframe-1)*ny;
+    startframe = ceil(startline/ny);
+    startinframeline = rem(startline-1, ny)+1;
     
-    endframe = floor(endline/ny) + 1;
-    endinframeline = endline - (endframe-1)*ny;
+    endframe = ceil(endline/ny);
+    endinframeline = rem(endline-1, ny)+1;
     
     
 
     for nframe = startframe:endframe
         try 
-            tempframe = imread(filename, startframe);
+%             tempframe = imread(filename, startframe);
+            tempframe = imread(filename, nframe);
         catch
             disp('invalid linenumber');
             break;
