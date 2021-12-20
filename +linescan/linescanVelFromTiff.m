@@ -1,12 +1,12 @@
-function linescanVelFromTiff(varargin)
+function Result = linescanVelFromTiff(varargin)
     p = inputParser();
     p.addOptional('filepath','',@ischar)
     p.addOptional('WinSize',75,@(x) isnumeric(x)&&isscalar(x));
     p.addOptional('WinStep',50,@(x) isnumeric(x)&&isscalar(x));
     % TODO: should these be parameters?
-    p.addParameter('msPerLine',@(x) isnumeric(x)&&isscalar(x));
-    p.addParameter('umPerPx',@(x) isnumeric(x)&&isscalar(x));
-    p.addParameter('Mask','Visual',@ischar)
+    p.addParameter('msPerLine',[],@(x) isnumeric(x)&&isscalar(x));
+    p.addParameter('umPerPx',[],@(x) isnumeric(x)&&isscalar(x));
+    p.addParameter('Mask','Visual',@(x) ischar(x)||isvector(x))
     p.addParameter('Method','Radon',@ischar);
     p.addParameter('Maxlines',inf);
     p.addParameter('UseAvg',false,@islogical);
@@ -24,8 +24,7 @@ function linescanVelFromTiff(varargin)
         Openfile = fullfile(pname, fname);
         disp(Openfile);
     else
-        Openfile = p.Results.Openfile;
-        [pname,fname] = fileparts(Openfile);
+        Openfile = p.Results.filepath;
     end
     
     
@@ -91,7 +90,7 @@ function linescanVelFromTiff(varargin)
     
     % TODO: save Result
     % TODO: this should be moved out into calling function 
-    Datafile = [char(strrep(Openfile,'.tif',['_rawVel-', num2str(WinStep),'-',num2str(WinSize)])),'.mat'];
+    Datafile = [char(strrep(Openfile,'.tif',[' rawVel ', num2str(WinStep), num2str(WinSize)])),'-New.mat'];
     save(Datafile,'Openfile','Result','WinSize','WinStep','Tfactor','Xfactor','left', 'right');
 
 end

@@ -26,10 +26,15 @@ p.addRequired('I')
 p.addOptional('Tfactor', 1, @(x) isnumeric(x)&&isscalar(x)); % microns/pixel
 p.addOptional('Xfactor', 205/500*250/512, @(x) isnumeric(x)&&isscalar(x)); % microns/pixel
 p.parse(varargin{:});
+I_sign = 0;
 
 I = p.Results.I;
 Xfactor = p.Results.Xfactor;
 Tfactor = p.Results.Tfactor;
+
+if I_sign==0
+    I=fliplr(I);
+end
 
 I_size = size(I);
 
@@ -42,6 +47,7 @@ filtVar=25;     %Filter variance set to 25
 a=filtVar;
 
 %Create high pass flter using isotropic Gaussian
+% gaus = zeros(I_size);
 for x=1:I_size(1)
     for y=1:I_size(2)
         gaus(x,y) = 1 - exp(-.5 * ( ((x-0.5*I_size(1))^2 / a) + ((y-0.5*I_size(2))^2 / a) ) );
@@ -124,7 +130,7 @@ end
 
 %toc
 
-Result = [0, 0, velocity, thetaMax];
+Result = [0, 0, velocity, thetaMax, Y];
 
 end
 
@@ -140,6 +146,7 @@ velocityLow=1/tan(thetaLast);
 
 velInc = (velocityHigh - velocityLow)/numInc;
 
+% theta = zeros(x*173, 1);
 for i=1:x*173
     thetaNew=atan(1 / ((1/tan(theta(i))) - velInc));
     theta(i+1)=thetaNew;
@@ -147,6 +154,7 @@ end
 
 theta = rad2deg(theta);
 
+% thetaLin = zeros(length(22:1/x:89));
 n=1;
 for i=22:1/x:89
     thetaLin(n)=i;

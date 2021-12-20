@@ -102,7 +102,7 @@ end
 % Left over variables from origianal program are set = 0
 WinNumber = 0; Nframes = 0; WinPerFrame = 0; WinTop = 0; Period = 0;  WinPixelsDown = 0;
 Flux = NaN; Flux2 = NaN; Flux3 = NaN;
-Result = [Nframes, WinTop, vel, MaxSep, angletrue, Flux,(Nframes-1)*Period + 1/1000/TfactorUse*(WinNumber-1)*WinPixelsDown, WinNumber, Flux2, Flux3];
+Result = [Nframes, WinTop, vel, angletrue, MaxSep];
 
 
 function [angle, MaxSep] = optimizeWithToolbox(fun, MinTheta, MaxTheta, SepTol, Steps)

@@ -89,7 +89,7 @@ errorcheck = p.Results.errorcheck;
     nWins = length(first);
 
     % Initialize outputs
-    Result = zeros(nWins,10);
+    Result = zeros(nWins,6);
     
     % Create waitbar
     hWait = waitbar(0);
@@ -105,6 +105,7 @@ errorcheck = p.Results.errorcheck;
     for iWin = 1:1:nWins
         % TODO: use im2double instead?
         block = double(I(first(iWin):last(iWin), :));
+%         block = im2double(I(first(iWin):last(iWin), :));
         veldata = getLinescanVelFcn(block);
 
         veldata(1) = first(iWin);
@@ -121,7 +122,7 @@ errorcheck = p.Results.errorcheck;
             pause;
         end
         % ---------------------------------------------
-        veldata(5) = -1*acot(veldata(3)/Xfactor/Tfactor);
+        veldata(6) = -1*acot(veldata(3)/Xfactor/Tfactor);
 
         Result(iWin, :) = veldata;
         
