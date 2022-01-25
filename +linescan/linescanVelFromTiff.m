@@ -55,7 +55,7 @@ function Result = linescanVelFromTiff(varargin)
     
     % Mask linescan
     if ischar(p.Results.Mask)
-        [left, right] = linescan.maskLinescan(I, p.Results.Mask);
+        [left, right] = linescan.maskLinescan(Openfile, p.Results.Mask);
     else
         left = p.Results.Mask(1);
         right = p.Results.Mask(2);

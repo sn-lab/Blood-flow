@@ -76,10 +76,13 @@ MidSmall = round(WinSize/2);
 method = '*linear'; % method for interpolate in rotating image
 MinTheta = 0;           % Starting negative value for angles of rotation
 MaxTheta = pi/2;       % Starting positive limit for angles of rotation
+% TODO: tolerance should probably be for velocity, not for angle, that way
+% it's linear
 SepTol = 0.01;
 Steps = 50;
 
 % Find angle of maximum separability
+% TODO: should this just be -RotateFindSVD?? Why 1??
 fun = @(Theta) 1-(RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method));
 [angle, MaxSep] = optimizeWithToolbox(fun, MinTheta, MaxTheta, SepTol, Steps);
 % fun = @(Theta) RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method);

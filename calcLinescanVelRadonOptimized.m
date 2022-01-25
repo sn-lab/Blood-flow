@@ -79,8 +79,7 @@ final = real(final);
 % likely the case but it's possible that flow slightly reverses in some
 % cases like stalls
 
-% [thetaMax, Y] = optimizeRadonAngleFminbnd(final, [0,180], 0.01);
-[velocity, Y] = optimizeRadonAngleFminsearch(final, 0.01);
+[thetaMax, Y] = optimizeRadonAngle(final, [0,180], 0.01);
 
 
 %Debug mode
@@ -94,9 +93,7 @@ end
 % 180) and then take tand(maxTheta). On interval [0,90) -> velocity is
 % positive, on interval (90,180) -> velocity is negative
 % thetaMax = theta(n);
-% velocity = tand(thetaMax)*Tfactor*Xfactor;
-velocity = velocity/Tfactor/Xfactor;
-thetaMax = NaN;
+velocity = tand(thetaMax)*Tfactor*Xfactor;
 
 Result = [0, 0, velocity, thetaMax, Y];
 end
@@ -144,8 +141,7 @@ end
 % TODO: tolerance should be in velocity units, not theta units....
 % TODO: this can probably be optimized faster with the optimization
 % toolbox, this is just a binary search
-% TODO: this function is currently non-functional
-function [theta, Y] = optimizeRadonAngleRecurse(I, thetaRange, velTol)
+function [theta, Y] = optimizeRadonAngle(I, thetaRange, velTol)
     % |----'----!----'----|
     % Check quarters (') of range to narrow down range to one half of
     % original, either [|, !], or [!, |]. If first quarter has a greater
@@ -162,82 +158,20 @@ function [theta, Y] = optimizeRadonAngleRecurse(I, thetaRange, velTol)
     %Determine maximum variance along columns
     Variance=var(R);
     [Y,n]=max(Variance);
-
+    
     % Determine newThetaRange, which is half of the original thetaRange
     if n == 1
         newThetaRange = [thetaRange(n), midTheta];
     else
         newThetaRange = [midTheta, thetaRange(n)];
     end
-
+    
     % Calculate difference in velocity for 
-    iTol = min( tand(newThetaRange)-tand(mean(newThetaRange)) );
+    iTol = abs(diff(tand(newThetaRange)));
     % TODO: does this need to be if/else or just if?
     if abs(iTol) < velTol
         theta = thetas(n);
     else
         [theta, Y] = optimizeRadonAngle(I, newThetaRange, velTol);
     end
-end
-
-function [theta, Y, flag] = optimizeRadonAngleLoop(I, thetaRange, velTol)
-    % |----'----!----'----|
-    % Check quarters (') of range to narrow down range to one half of
-    % original, either [|, !], or [!, |]. If first quarter has a greater
-    % variance than the third quarter, new range is [|, !], otherwise it is
-    % [!, |].
-    i = 1;
-    maxIter = 5000;
-    iTol = Inf;
-    % Loop until tolerance is less than requested, or maximum number of
-    % iterations is exceeded.
-    while iTol > velTol && i <= maxIter
-        midTheta = mean(thetaRange);
-        thetas = [mean([thetaRange(1), midTheta]), mean([midTheta, thetaRange(2)])];
-        [R, xp] = radon(I, thetas);
-
-        % TODO: this assumes that there is some variance--but if the window is
-        % small and there aren't many (or any) clear stripes then that doesn't
-        % work. But then again maybe nothing will work in that case.
-        %Determine maximum variance along columns
-        Variance=var(R);
-        [Y,n]=max(Variance);
-
-        % Determine newThetaRange, which is half of the original thetaRange
-        theta = thetas(n);
-        if n == 1
-            thetaRange = [thetaRange(n), midTheta];
-        else
-            thetaRange = [midTheta, thetaRange(n)];
-        end
-
-        % Calculate difference in velocity for 
-%         iTol = min(tand(thetaRange)-tand(theta));
-        iTol = abs(diff(tand(thetaRange)));
-        % TODO: does this need to be if/else or just if?
-        % TODO: this may be less readable than a while loop
-        i = i+1;
-    end
-    
-    flag = i <= maxIter;
-    % TODO: if i > maxIter, set the flag;
-end
-
-function [vel, Y, flag] = optimizeRadonAngleFminsearch(I, velTol)
-    fun = @(vel) -VelAngleRadonVar(I, vel);
-    options = optimset('MaxIter', 5000, 'TolX', velTol);
-%     [theta,Y,flag,output] = fminbnd(fun, thetaRange(1), thetaRange(2), options);
-    [vel,Y,flag,output] = fminsearch(fun, 0, options);
-    Y = -Y;
-end
-
-function Y = VelAngleRadonVar(I, vel)
-    % Calculate angle from requested velocity, with wrapping
-    theta = atand(vel);
-    if vel < 0
-        theta = theta+180;
-    end
-    
-    R = radon(I, theta);
-    Y = var(R);
 end
