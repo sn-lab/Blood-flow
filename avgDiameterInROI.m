@@ -1,3 +1,6 @@
+%TODO: remove this from the "Blood-flow" repository since it's not strictly
+%related to blood flow?
+
 clear
 % to calculate average diameter of a vessel inside ROI
 % 8/13/2015 ~mh973

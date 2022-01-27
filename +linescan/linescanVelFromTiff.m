@@ -34,10 +34,12 @@ function Result = linescanVelFromTiff(varargin)
     else
         msPerLine = p.Results.msPerLine;
     end
-    
+       
     if isempty(p.Results.umPerPx)
         % Try to get umPerPx from tiff file, check if matches
         % If not, prompt user
+        % For now, build this from the list of versions in MIPS. In future,
+        % might be good to use built-in ScanImage stuff
     else
         umPerPx = p.Results.umPerPx;
     end

@@ -26,6 +26,7 @@ p.addRequired('small')
 % TODO: these probably should be addRequired (not guessed)
 p.addOptional('Tfactor', 1, @(x) isnumeric(x)&&isscalar(x)); % microns/pixel
 p.addOptional('Xfactor', 205/500*250/512, @(x) isnumeric(x)&&isscalar(x)); % microns/pixel
+p.addOptional('Optimizer', @ischar); % microns/pixel
 p.parse(varargin{:});
 
 small = p.Results.small;
@@ -81,12 +82,18 @@ MaxTheta = pi/2;       % Starting positive limit for angles of rotation
 SepTol = 0.01;
 Steps = 50;
 
+
 % Find angle of maximum separability
-% TODO: should this just be -RotateFindSVD?? Why 1??
-fun = @(Theta) 1-(RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method));
-[angle, MaxSep] = optimizeWithToolbox(fun, MinTheta, MaxTheta, SepTol, Steps);
-% fun = @(Theta) RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method);
-% [angle, MaxSep] = optimizeWithoutToolbox(fun, MinTheta, MaxTheta, SepTol, Steps);
+switch p.Results.Optimizer
+    case 'fminbnd'
+        % TODO: should this just be -RotateFindSVD?? Why 1??
+        fun = @(Theta) 1-(RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method));
+        [angle, MaxSep] = optimizeWithToolbox(fun, MinTheta, MaxTheta, SepTol, Steps);
+    case 'legacy'
+        fun = @(Theta) RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method);
+        [angle, MaxSep] = optimizeWithoutToolbox(fun, MinTheta, MaxTheta, SepTol, Steps);
+end
+
 
 % Determine whether maximum yields horizontal or vertical stripes
 Rotdata = Rotate(XRAMP, YRAMP, X, Y, small, angle, method);
@@ -103,8 +110,12 @@ end
 % TODO: what is this number?: (Nframes-1)*Period + 1/1000/TfactorUse*(WinNumber-1)*WinPixelsDown
 % Result = [Nframes,WinTop, vel, MaxSep, angletrue, Flux,(Nframes-1)*Period + 1/1000/TfactorUse*(WinNumber-1)*WinPixelsDown, WinNumber, Flux2, Flux3];
 % Left over variables from origianal program are set = 0
-WinNumber = 0; Nframes = 0; WinPerFrame = 0; WinTop = 0; Period = 0;  WinPixelsDown = 0;
-Flux = NaN; Flux2 = NaN; Flux3 = NaN;
+% WinNumber = 0; Nframes = 0; WinPerFrame = 0; WinTop = 0; Period = 0;  WinPixelsDown = 0;
+% Flux = NaN; Flux2 = NaN; Flux3 = NaN;
+
+% TODO: necessary to return Nframes and WinTop?
+Nframes = 0;
+WinTop = 0;
 Result = [Nframes, WinTop, vel, angletrue, MaxSep];
 
 

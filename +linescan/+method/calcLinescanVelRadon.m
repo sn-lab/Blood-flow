@@ -25,6 +25,9 @@ p.addRequired('I')
 % TODO: these probably should be addRequired (not guessed)
 p.addOptional('Tfactor', 1, @(x) isnumeric(x)&&isscalar(x)); % microns/pixel
 p.addOptional('Xfactor', 205/500*250/512, @(x) isnumeric(x)&&isscalar(x)); % microns/pixel
+% TODO: maybe this should be passed as a function handle to allow user to
+% pass other arguments such as I_sign and customize optimizer
+p.addOptional('Optimizer', @ischar); % microns/pixel
 p.parse(varargin{:});
 I_sign = 0;
 
@@ -79,8 +82,16 @@ final = real(final);
 % likely the case but it's possible that flow slightly reverses in some
 % cases like stalls
 
-% [thetaMax, Y] = optimizeRadonAngleFminbnd(final, [0,180], 0.01);
-[velocity, Y] = optimizeRadonAngleFminsearch(final, 0.01);
+switch p.Results.Optimizer
+    case 'fminbnd'
+        [velocity, Y] = optimizeRadonAngleFminsearch(final, 0.01);
+    case 'optimizer'
+        [thetaMax, Y] = optimizeRadonAngleFminbnd(final, [0,180], 0.01);
+    case 'binarysearch'
+        [theta, Y] = optimizeRadonAngleRecurse(final, [0,180], 0.01);
+    case 'legacy'
+        
+end
 
 
 %Debug mode
@@ -171,6 +182,7 @@ function [theta, Y] = optimizeRadonAngleRecurse(I, thetaRange, velTol)
     end
 
     % Calculate difference in velocity for 
+    % iTol = abs(diff(tand(newThetaRange)));
     iTol = min( tand(newThetaRange)-tand(mean(newThetaRange)) );
     % TODO: does this need to be if/else or just if?
     if abs(iTol) < velTol
@@ -223,6 +235,8 @@ function [theta, Y, flag] = optimizeRadonAngleLoop(I, thetaRange, velTol)
     % TODO: if i > maxIter, set the flag;
 end
 
+
+% TODO: why isn't this using fminbnd?
 function [vel, Y, flag] = optimizeRadonAngleFminsearch(I, velTol)
     fun = @(vel) -VelAngleRadonVar(I, vel);
     options = optimset('MaxIter', 5000, 'TolX', velTol);
@@ -230,6 +244,133 @@ function [vel, Y, flag] = optimizeRadonAngleFminsearch(I, velTol)
     [vel,Y,flag,output] = fminsearch(fun, 0, options);
     Y = -Y;
 end
+
+
+function optimizeRadonAngleLegacy()
+    % Okay, so I_sign allows you to force all the input data to have a positive
+    % slope by flipping the image left to right if it has a negative slope,
+    % that way, you know the max will be in the range (90, 180] and therefore,
+    % only have to do the transform over a smaller range (one quadrant rather
+    % than two)
+
+    if I_sign~=2
+        theta = 90+radonAngles(181,4);
+    else    
+        theta1 = 90 - radonAngles(181,4);
+        theta1 = fliplr(theta1);
+        theta2 = 90 + radonAngles(181,4);
+        theta = [theta1 theta2];
+    end
+
+    %if I_sign==1,
+        %theta = 90+linspace(0,90,181);
+        %theta = 90+radonAngles(181);
+    %else
+        %theta=linspace(0,90,181);
+        %theta = radonAngles(181);
+    %end
+    [R, xp] = radon(final, theta);
+
+    % TODO: this assumes that there is some variance--but if the window is
+    % small and there aren't many (or any) clear stripes then that doesn't
+    % work. But then again maybe nothing will work in that case.
+    %Determine maximum variance along columns
+    Variance=var(R);
+    [Y,n]=max(Variance);
+
+
+    %Debug mode
+    Debug = 0;
+    if Debug
+        %Display the filtered image
+        figure(2)
+        imagesc(final);
+
+        %Display the Radon transform image
+        figure(3)
+        iptsetpref('ImshowAxesVisible','on')
+        imshow(R, [], 'Xdata',theta,'Ydata',xp,'InitialMagnification','fit')
+        colormap(hot), colorbar
+        ylabel('x'''); xlabel('\theta');
+
+        %Show the plot of the variance
+        figure(4)
+        plot(Variance);
+
+    %     figure(5)
+    %     IR=iradon(R,theta);
+    %     imshow(IR,[]);
+        %Wait for user
+        pause;  
+    end
+
+
+    % TODO: why is this necessary? Can't you just do theta over range of [0,
+    % 180) and then take tand(maxTheta). On interval [0,90) -> velocity is
+    % positive, on interval (90,180) -> velocity is negative
+    thetaMax = theta(n);
+    velocity = tand(thetaMax)*Tfactor*Xfactor;
+
+    % if I_sign==1
+    %     thetaMax = theta(n)-90;
+    %     velocity = -1*(1/tand(thetaMax))*Tfactor*Xfactor;
+    % elseif I_sign==0
+    %     thetaMax = (theta(n)-90)*-1;
+    %     velocity = (1/tand(-1*thetaMax))*Tfactor*Xfactor;
+    % else
+    %     if theta(n)<90
+    %         if n-1<1
+    %             n=2;
+    %         end
+    %         thetaMax = theta(n-1)-90;
+    %     else
+    %         thetaMax = theta(n)-90;
+    %     end
+    %     velocity = (1/tand(-1*thetaMax))*Tfactor*Xfactor;
+    % end
+
+    %toc
+
+    
+    % maxVel = 60;
+    % minVel = -60;
+    % tol = 0.1;
+    % thetas = [atand(0:tol:maxVel), atand(minVel:tol:0)+180];
+    % % OR
+    % maxSpeed = 60;
+    % thetaHalf = atand(0:tol:maxSpeed);
+    % thetas = [thetaHalf, -fliplr(thetaHalf)+180];
+    function theta = radonAngles(numInc,x)
+        numInc=x*numInc;
+        thetaFirst = deg2rad(1);
+        thetaLast=deg2rad(89);
+        velocityHigh=1/tan(thetaFirst);
+        velocityLow=1/tan(thetaLast);
+
+        velInc = (velocityHigh - velocityLow)/numInc;
+
+        theta = zeros(1, x*173+1);
+        theta(1) = thetaFirst;
+        for i=1:x*173
+            thetaNew=atan(1 / ((1/tan(theta(i))) - velInc));
+            theta(i+1)=thetaNew;
+        end
+
+        theta = rad2deg(theta);
+
+        thetaLin = zeros(1,x*(89-22)+1);
+        n=1;
+        for i=22:1/x:89
+            thetaLin(n)=i;
+            n=n+1;
+        end
+
+        theta = [theta, thetaLin];
+    end
+
+end
+
+
 
 function Y = VelAngleRadonVar(I, vel)
     % Calculate angle from requested velocity, with wrapping
