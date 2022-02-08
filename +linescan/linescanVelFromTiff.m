@@ -27,7 +27,64 @@ function Result = linescanVelFromTiff(varargin)
         Openfile = p.Results.filepath;
     end
     
+    %% Metadata
+    hTiffReader = util.io.readTiffStack(Openfile);    
+    meta = hTiffReader.metadata();
+    imageDescription = hTiffReader.descriptions();
+    delete(hTiffReader);
     
+    hTiff = Tiff(Openfile, 'r');
+    try
+        model = hTiff.getTag('Model');
+    catch
+    end
+    delete(hTiff);
+    
+    % TODO: get XResolution from Tiff tag instead?
+    % TODO: need to put if model exists statement around this?
+    s = util.io.str2struct(model);
+    if s.MIPS.MIPS.Px2um.Active
+        if s.MIPS.Px2um.VoxelSize(1) ~= s.MIPS.Px2um.VoxelSize(2)
+            warning('Pixels are not square (different X and Y sizes). Using X size')
+        end
+        umPerPx = s.MIPS.Px2um.VoxelSize(1);
+    end
+        
+    % Determine which version of ScanImage from: 3.8, 2016b, 2018a
+    % TODO: Force user to use MIPS or change metadata in some way in order
+    % to pull umPerPx from metadata. Too much to include full px2um package
+    % here.
+
+    %ScanImage 2016b, 2018a
+    version = char(extractBetween(meta,'SI.VERSION_MAJOR = ',newline));
+    if isempty(version)
+        % ScanImage 3.8
+        version = char(extractBetween(imageDescription{1,1},'state.software.version=',char(13))); % char(13) is a newline character != newline
+    end
+    
+    % Parse and format metadata for different ScanImage versions
+    switch version
+        case '3.8'
+            % 'state' structure stored in ImageDescription tag
+            % No Software or Artist Tags
+            s = util.io.str2struct(imageDescription{1,1});
+            msPerLine = s.state.acq.msPerLine;
+            
+        case {'2016','''2018a'''}
+            meta = strsplit(meta, [newline, newline]);
+            software = meta{1};
+            s = util.io.str2struct(software);
+            % TODO:
+            % msPerLine = ?;
+        otherwise
+            warning(['Unsupported ScanImage version ', version, '. Cannot detect line period from metadata.'])
+    end
+    % TODO: still need objective
+    
+    %% Settings
+    % TODO: always display all settings if any need to be set, but make
+    % sure to set the default values to what was pulled from metadata
+    % TODO: should input override metadata? Issue warning if don't match?
     if isempty(p.Results.msPerLine)
         % Try to get msPerLine from tiff file, check if matches
         % If not, prompt user
@@ -40,10 +97,12 @@ function Result = linescanVelFromTiff(varargin)
         % If not, prompt user
         % For now, build this from the list of versions in MIPS. In future,
         % might be good to use built-in ScanImage stuff
+        
     else
         umPerPx = p.Results.umPerPx;
     end
     
+    %%
     % subtract average value of each column from image to take out vertical stripes
     % TODO: should this happen frame-by-frame, block-by-block or over
     % entire image??
@@ -51,9 +110,9 @@ function Result = linescanVelFromTiff(varargin)
     % Maybe should move out depening on which
     
     % read in image data and reshape
-    h = util.io.readTiffStack(Openfile);
-    I = permute(h.data(), [2,1,3]);
-    delete(h);
+    hTiffReader = util.io.readTiffStack(Openfile);
+    I = permute(hTiffReader.data(), [2,1,3]);
+    delete(hTiffReader);
     
     % Mask linescan
     if ischar(p.Results.Mask)
