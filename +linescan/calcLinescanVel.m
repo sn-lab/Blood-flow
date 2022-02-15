@@ -94,22 +94,17 @@ if a
 
     %Create high pass flter using isotropic Gaussian
     % TODO: try to vectorize this
-%     x = 1:I_size(1);
-%     y = (1:I_size(2))';
-%     guas = 1 - exp(-.5 * ( ((x-0.5*I_size(1)).^2 / a) + ((y-0.5*I_size(2)).^2 / a) ) );
+    % TODO: x and y should be rearranged
     I_size = size(I);
-    gaus = zeros(I_size);
-    for x=1:I_size(1)
-        for y=1:I_size(2)
-            gaus(x,y) = 1 - exp(-.5 * ( ((x-0.5*I_size(1))^2 / a) + ((y-0.5*I_size(2))^2 / a) ) );
-        end
-    end
+    y = (1:I_size(1))';
+    x = 1:I_size(2);
+    gaus = 1 - exp(-.5 * ( ((y-0.5*I_size(1)).^2 / a) + ((x-0.5*I_size(2)).^2 / a) ) );
 
     %Multiply frequency components of image by Gaussian filter
-    I_fft = fftshift(fft2(I));
-    filtered = I_fft.*gaus;
-    final = ifft2(ifftshift(filtered));
-    final = real(final);
+    I = fftshift(fft2(I));
+    I = I.*gaus;
+    I = ifft2(ifftshift(I));
+    I = real(I);
 end
 
 %% Loop through lines
