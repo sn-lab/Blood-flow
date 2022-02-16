@@ -33,17 +33,15 @@ p.addRequired('I')
 p.addOptional('Optimizer', 'fminsearch', @ischar); % microns/pixel
 p.parse(varargin{:});
 % TODO: allow optimset - optimizer settings e.g. I_sign
-I_sign = 0;
-
 I = p.Results.I;
 % Xfactor = p.Results.Xfactor;
 % Tfactor = p.Results.Tfactor;
+I_sign = 0;
+
 
 % if I_sign==0
 %     I=fliplr(I);
 % end
-
-I_size = size(I);
 
 %% extract velocity by radon transform method
 
@@ -71,16 +69,18 @@ I_size = size(I);
 switch p.Results.Optimizer
     case 'fminsearch'
         % TODO: change this to dY/dt
-        [dYdt, Y] = optimizeRadonAngleFminsearch(final, 0.01);
-%     case 'fminbnd'
-%         [thetaMax, Y] = optimizeRadonAngleFminbnd(final, [0,180], 0.01);
+        [dYdt, Y] = optimizeRadonAngleFminsearch(I, 0.01);
+    case 'fminbnd'
+        [dYdt, Y] = optimizeRadonAngleFminbnd(I, 0.01);
     case 'binarysearch'
-        [thetaMax, Y] = optimizeRadonAngleRecurse(final, [0,180], 0.01);
+        [thetaMax, Y] = optimizeRadonAngleRecurse(I, [0,180], 0.01);
         dYdt = tand(thetaMax);
+   case 'fminunc'
+        [dYdt, Y] = optimizeRadonAngleFminunc(I, 0.01);
     case 'legacy'
 %         [thetaMax, Y] = optimizeRadonAngleLegacy(final, [0,180], 0.01);
         % TODO: switch to passing in angle range rather than I_sign
-        [dYdt, Y] = optimizeRadonAngleLegacy(final, 2);
+        [dYdt, Y] = optimizeRadonAngleLegacy(I, 2);
     otherwise
         error([p.Results.Optimizer ' is not a valid optimizer']);
 end
@@ -142,29 +142,62 @@ end
 
 %% Optimization Functions
 % TODO: why isn't this using fminbnd?
-function [vel, Y, flag] = optimizeRadonAngleFminsearch(I, velTol)
-    fun = @(vel) -VelAngleRadonVar(I, vel);
-    options = optimset('MaxIter', 5000, 'TolX', velTol);
-%     [theta,Y,flag,output] = fminbnd(fun, thetaRange(1), thetaRange(2), options);
-    [vel,Y,flag,output] = fminsearch(fun, 0, options);
-    Y = -Y;
-    
-    
-    % TODO: move this inside fminsearch function for better organization?
-    function Y = VelAngleRadonVar(I, vel)
-        % Calculate angle from requested velocity, with wrapping
-        theta = atand(vel);
-        if vel < 0
-            theta = theta+180;
-        end
+% TODO: figure out why this isn't working well
 
-        R = radon(I, theta);
-        Y = var(R);
-    end
+% For setting an appropriate tolerance, it makes most sense to perform
+% optimization on slope, since the slope is linearly related to velocity,
+% however, this is a difficult optimization problem since velocity is
+% unconstrained. In reality, we have to set limits on velocity and 
+% (-inf,inf)convergence of optimization function is more consistent when restricted
+% peformed on 
+function [dYdt, Y, flag] = optimizeRadonAngleFminsearch(I, slopeTol)
+    fun = @(dYdt) -RadonVarFromSlope(I, dYdt);
+    options = optimset('MaxIter', 5000, 'TolX', slopeTol);
+    [dYdt,Y,flag,output] = fminsearch(fun, 0, options);
+    Y = -Y;
+end
+    
+function [dYdt, Y, flag] = optimizeRadonAngleFminunc(I, slopeTol)
+    fun = @(dYdt) -RadonVarFromSlope(I, dYdt);
+%     dYdt = optimvar('dYdt');
+%     prob = optimproblem('Objective', fun(dYdt));
+%     x0.dYdt = 0;
+% TODO: what is appropriate starting point for fminunc? 0 seems like would
+% never occur in practice
+    [dYdt,Y,flag,output] = fminunc(fun,0);
+    Y = -Y;
+end
+
+% TODO: what is appropriate thetaTol?
+function [dYdt, Y, flag] = optimizeRadonAngleFminbnd(I, thetaTol)
+    fun = @(theta) -RadonVarFromAngle(I, theta);
+    options = optimset('MaxIter', 5000, 'TolX', thetaTol);
+    [theta,Y,flag,output] = fminbnd(fun, 0, 180, options);
+    Y = -Y;
+    % Slope is actually opposite tand(thetaMax) because tand provides slope
+    % in cartesian coordinates as opposed to image coordinates where Y-axis
+    % increases going down, rather than up.
+    dYdt = -tand(theta);
 end
 
 
+%% Objective Function
+% TODO: move this inside fminsearch function for better organization?
+function Y = RadonVarFromSlope(I, dYdt)
+    % Calculate variance of image at angle specified by slope (dYdt)
+    theta = atand(dYdt);
+    Y = RadonVarFromAngle(I, theta);
+%     R = radon(I, theta);
+%     Y = var(R);
+end
 
+function Y = RadonVarFromAngle(I, theta)
+    % Calculate variance of image at specified angle (theta)
+    R = radon(I, theta);
+    Y = var(R);
+end
+
+%%
 function [dYdt, Y] = optimizeRadonAngleLegacy(final, I_sign)
     % Okay, so I_sign allows you to force all the input data to have a positive
     % slope by flipping the image left to right if it has a negative slope,
@@ -174,7 +207,7 @@ function [dYdt, Y] = optimizeRadonAngleLegacy(final, I_sign)
 
     if I_sign~=2
         theta = 90+radonAngles(181,4);
-    else    
+    else
         theta1 = 90 - radonAngles(181,4);
         theta1 = fliplr(theta1);
         theta2 = 90 + radonAngles(181,4);
@@ -188,12 +221,14 @@ function [dYdt, Y] = optimizeRadonAngleLegacy(final, I_sign)
         %theta=linspace(0,90,181);
         %theta = radonAngles(181);
     %end
+    
+    % For radon transform, theta appears to be angle from vertical
     [R, xp] = radon(final, theta);
 
     % TODO: this assumes that there is some variance--but if the window is
     % small and there aren't many (or any) clear stripes then that doesn't
     % work. But then again maybe nothing will work in that case.
-    %Determine maximum variance along columns
+    % Determine maximum variance along columns
     Variance=var(R);
     [Y,iTheta]=max(Variance);
 
@@ -208,8 +243,15 @@ function [dYdt, Y] = optimizeRadonAngleLegacy(final, I_sign)
     % TODO: why is this necessary? Can't you just do theta over range of [0,
     % 180) and then take tand(maxTheta). On interval [0,90) -> velocity is
     % positive, on interval (90,180) -> velocity is negative
-    thetaMax = theta(iTheta);
-    dYdt = tand(thetaMax);
+    % TODO: need angle convention
+    % TODO; theta-90?
+    
+    % For cartesian convention. Should be in range (-90, 90)
+    thetaMax = theta(iTheta)-90;
+    % Slope is actually opposite tand(thetaMax) because tand provides slope
+    % in cartesian coordinates as opposed to image coordinates where Y-axis
+    % increases going down, rather than up.
+    dYdt = -tand(thetaMax);
 
     % if I_sign==1
     %     thetaMax = theta(n)-90;
@@ -263,7 +305,9 @@ function [dYdt, Y] = optimizeRadonAngleLegacy(final, I_sign)
         %Wait for user
         pause; 
     end
-
+    
+    % TODO: there should be a faster way to do this at the specified
+    % precision i.e. linearly spaced along velocity
     % TODO: make this persistent so only has to be run once?
     function theta = radonAngles(numInc,x)
         numInc=x*numInc;
