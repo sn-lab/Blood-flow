@@ -67,16 +67,11 @@ I_sign = 0;
 % TODO: can we just use dY/dt or are we also worried about tolerance due to
 % different Tfactor/Xfactor i.e. will these cause nonlinear????
 switch p.Results.Optimizer
-    case 'fminsearch'
-        % TODO: change this to dY/dt
-        [dYdt, Y] = optimizeRadonAngleFminsearch(I, 0.01);
     case 'fminbnd'
         [dYdt, Y] = optimizeRadonAngleFminbnd(I, 0.01);
     case 'binarysearch'
-        [thetaMax, Y] = optimizeRadonAngleRecurse(I, [0,180], 0.01);
-        dYdt = tand(thetaMax);
-   case 'fminunc'
-        [dYdt, Y] = optimizeRadonAngleFminunc(I, 0.01);
+        [thetaMax, Y] = optimizeRadonAngleLoop(I, [0,180], 0.01);
+        dYdt = -tand(thetaMax-90);
     case 'legacy'
 %         [thetaMax, Y] = optimizeRadonAngleLegacy(final, [0,180], 0.01);
         % TODO: switch to passing in angle range rather than I_sign
@@ -149,62 +144,36 @@ end
 % however, this is a difficult optimization problem since velocity is
 % unconstrained. In reality, we have to set limits on velocity and 
 % (-inf,inf)convergence of optimization function is more consistent when restricted
-% peformed on 
-function [dYdt, Y, flag] = optimizeRadonAngleFminsearch(I, slopeTol)
-    fun = @(dYdt) -RadonVarFromSlope(I, dYdt);
-    options = optimset('MaxIter', 5000, 'TolX', slopeTol);
-    [dYdt,Y,flag,output] = fminsearch(fun, 0, options);
-    Y = -Y;
-end
-    
-function [dYdt, Y, flag] = optimizeRadonAngleFminunc(I, slopeTol)
-    fun = @(dYdt) -RadonVarFromSlope(I, dYdt);
-%     dYdt = optimvar('dYdt');
-%     prob = optimproblem('Objective', fun(dYdt));
-%     x0.dYdt = 0;
-% TODO: what is appropriate starting point for fminunc? 0 seems like would
-% never occur in practice
-    [dYdt,Y,flag,output] = fminunc(fun,0);
-    Y = -Y;
-end
+% peformed on
+
+% TODO: is it worth setting a speed limit?
 
 % TODO: what is appropriate thetaTol?
 function [dYdt, Y, flag] = optimizeRadonAngleFminbnd(I, thetaTol)
-    fun = @(theta) -RadonVarFromAngle(I, theta);
+    fun = @(theta) -var(radon(I, theta));
     options = optimset('MaxIter', 5000, 'TolX', thetaTol);
     [theta,Y,flag,output] = fminbnd(fun, 0, 180, options);
     Y = -Y;
     % Slope is actually opposite tand(thetaMax) because tand provides slope
     % in cartesian coordinates as opposed to image coordinates where Y-axis
     % increases going down, rather than up.
-    dYdt = -tand(theta);
+    dYdt = -tand(theta-90);
 end
 
-
-%% Objective Function
-% TODO: move this inside fminsearch function for better organization?
-function Y = RadonVarFromSlope(I, dYdt)
-    % Calculate variance of image at angle specified by slope (dYdt)
-    theta = atand(dYdt);
-    Y = RadonVarFromAngle(I, theta);
-%     R = radon(I, theta);
-%     Y = var(R);
-end
-
-function Y = RadonVarFromAngle(I, theta)
-    % Calculate variance of image at specified angle (theta)
-    R = radon(I, theta);
-    Y = var(R);
-end
-
-%%
+%
 function [dYdt, Y] = optimizeRadonAngleLegacy(final, I_sign)
     % Okay, so I_sign allows you to force all the input data to have a positive
     % slope by flipping the image left to right if it has a negative slope,
     % that way, you know the max will be in the range (90, 180] and therefore,
     % only have to do the transform over a smaller range (one quadrant rather
     % than two)
-
+    % I_sign = -1   % slope is negative
+    % I_sign = 1    % slope is positive
+    % TODO: should this be changed to 0 or NaN?
+    % I_sign = 2    % slope is unknown/unspecified
+    
+    % thetas = radonAnglesSimple(tand([1, 89]), 0.06);
+            
     if I_sign~=2
         theta = 90+radonAngles(181,4);
     else
@@ -213,14 +182,7 @@ function [dYdt, Y] = optimizeRadonAngleLegacy(final, I_sign)
         theta2 = 90 + radonAngles(181,4);
         theta = [theta1 theta2];
     end
-
-    %if I_sign==1,
-        %theta = 90+linspace(0,90,181);
-        %theta = 90+radonAngles(181);
-    %else
-        %theta=linspace(0,90,181);
-        %theta = radonAngles(181);
-    %end
+    
     
     % For radon transform, theta appears to be angle from vertical
     [R, xp] = radon(final, theta);
@@ -309,123 +271,138 @@ function [dYdt, Y] = optimizeRadonAngleLegacy(final, I_sign)
     % TODO: there should be a faster way to do this at the specified
     % precision i.e. linearly spaced along velocity
     % TODO: make this persistent so only has to be run once?
+    % numIng
+    % TODO: what are these function inputs??
     function theta = radonAngles(numInc,x)
         numInc=x*numInc;
-        thetaFirst = deg2rad(1);
-        thetaLast=deg2rad(89);
-        velocityHigh=1/tan(thetaFirst);
-        velocityLow=1/tan(thetaLast);
+        velocityHigh = tand(89);
+        velocityLow = tand(1);
 
         velInc = (velocityHigh - velocityLow)/numInc;
 
-        theta = zeros(1, x*173+1);
-        theta(1) = thetaFirst;
-        for i=1:x*173
-            thetaNew=atan(1 / ((1/tan(theta(i))) - velInc));
-            theta(i+1)=thetaNew;
-        end
+    %     theta = zeros(1, x*173+1);
+    %     theta(1) = 1;
+    %     for i=1:x*173
+    %         thetaNew=atand(1 / ((1/tand(theta(i))) - velInc));
+    %         theta(i+1)=thetaNew;
+    %     end
+        % This line is similar enough tto above (without error accumulation)
+        theta = atand(1./(velocityHigh:-velInc:(velocityHigh-velInc*x*173)));
 
-        theta = rad2deg(theta);
-        
-        % TODO: this can be vectorized
-        thetaLin = zeros(1,x*(89-22)+1);
-        n=1;
-        for i=22:1/x:89
-            thetaLin(n)=i;
-            n=n+1;
-        end
+        thetaLin = 22:1/x:89;
 
         theta = [theta, thetaLin];
+    end
+
+    
+%     % thetas = radonAnglesSimple([], 0.06);
+%     function thetas = radonAnglesSimple(velRange, velTol)
+%         % TODO: these should probably be function inputs:
+%         % velHigh=1/tand(1);
+%         % velLow=1/tand(89);
+%         
+%         % TODO: should this be corrected for radon? i.e. atand(-vel)+90
+%         thetas = atand(velLow:velTol:velHigh);
+%     end
+
+    % thetas = radonAnglesSimple(tand([1, 89]), 0.06);
+    % thetas = radonAnglesSimple([57.290, 0.0175]),0.06);
+    function thetas = radonAnglesSimple(velRange, velTol)        
+        % TODO: should this be corrected for radon? i.e. atand(-vel)+90
+%         vels = velRange(1):velTol:velRange(2);
+        vels = velRange(2):-velTol:velRange(1);
+        thetas = atand(-vels)+90;
     end
 
 end
 
 
 %% (Expermental) Optimization Functions
-% % ```radon``` is O(theta) i.e. linear relationship between runtime and
-% % length of theta vector. So, try to minimize the number of thetas that
-% % radon is evaluated for by doing some sort of optimization. This function
-% % essentially uses a binary search to optimize theta.
-% % TODO: also write this as a while loop to see if more readable etc.
-% % TODO: tolerance should be in velocity units, not theta units....
-% % TODO: this can probably be optimized faster with the optimization
-% % toolbox, this is just a binary search
-% % TODO: this function is currently non-functional
-% function [theta, Y] = optimizeRadonAngleRecurse(I, thetaRange, velTol)
-%     % |----'----!----'----|
-%     % Check quarters (') of range to narrow down range to one half of
-%     % original, either [|, !], or [!, |]. If first quarter has a greater
-%     % variance than the third quarter, new range is [|, !], otherwise it is
-%     % [!, |].
-%     midTheta = mean(thetaRange);
-% %     iTol = (midTheta-thetaRange(1))/2;
-%     thetas = [mean([thetaRange(1), midTheta]), mean([midTheta, thetaRange(2)])];
-%     [R, xp] = radon(I, thetas);
-% 
-%     % TODO: this assumes that there is some variance--but if the window is
-%     % small and there aren't many (or any) clear stripes then that doesn't
-%     % work. But then again maybe nothing will work in that case.
-%     %Determine maximum variance along columns
-%     Variance=var(R);
-%     [Y,n]=max(Variance);
-% 
-%     % Determine newThetaRange, which is half of the original thetaRange
-%     if n == 1
-%         newThetaRange = [thetaRange(n), midTheta];
-%     else
-%         newThetaRange = [midTheta, thetaRange(n)];
-%     end
-% 
-%     % Calculate difference in velocity for 
-%     % iTol = abs(diff(tand(newThetaRange)));
-%     iTol = min( tand(newThetaRange)-tand(mean(newThetaRange)) );
-%     % TODO: does this need to be if/else or just if?
-%     if abs(iTol) < velTol
-%         theta = thetas(n);
-%     else
-%         [theta, Y] = optimizeRadonAngle(I, newThetaRange, velTol);
-%     end
-% end
-% 
-% function [theta, Y, flag] = optimizeRadonAngleLoop(I, thetaRange, velTol)
-%     % |----'----!----'----|
-%     % Check quarters (') of range to narrow down range to one half of
-%     % original, either [|, !], or [!, |]. If first quarter has a greater
-%     % variance than the third quarter, new range is [|, !], otherwise it is
-%     % [!, |].
-%     i = 1;
-%     maxIter = 5000;
-%     iTol = Inf;
-%     % Loop until tolerance is less than requested, or maximum number of
-%     % iterations is exceeded.
-%     while iTol > velTol && i <= maxIter
-%         midTheta = mean(thetaRange);
-%         thetas = [mean([thetaRange(1), midTheta]), mean([midTheta, thetaRange(2)])];
-%         [R, xp] = radon(I, thetas);
-% 
-%         % TODO: this assumes that there is some variance--but if the window is
-%         % small and there aren't many (or any) clear stripes then that doesn't
-%         % work. But then again maybe nothing will work in that case.
-%         %Determine maximum variance along columns
-%         Variance=var(R);
-%         [Y,n]=max(Variance);
-% 
-%         % Determine newThetaRange, which is half of the original thetaRange
-%         theta = thetas(n);
-%         if n == 1
-%             thetaRange = [thetaRange(n), midTheta];
-%         else
-%             thetaRange = [midTheta, thetaRange(n)];
-%         end
-% 
-%         % Calculate difference in velocity for 
-% %         iTol = min(tand(thetaRange)-tand(theta));
-%         iTol = abs(diff(tand(thetaRange)));
-%         % TODO: does this need to be if/else or just if?
-%         % TODO: this may be less readable than a while loop
-%         i = i+1;
-%     end
-%     
-%     flag = i <= maxIter;
-%     % TODO: if i > maxIter, set the flag;
-% end
+% ```radon``` is O(theta) i.e. linear relationship between runtime and
+% length of theta vector. So, try to minimize the number of thetas that
+% radon is evaluated for by doing some sort of optimization. This function
+% essentially uses a binary search to optimize theta.
+% TODO: also write this as a while loop to see if more readable etc.
+% TODO: tolerance should be in velocity units, not theta units....
+% TODO: this can probably be optimized faster with the optimization
+% toolbox, this is just a binary search
+% TODO: this function is currently non-functional
+function [theta, Y] = optimizeRadonAngleRecurse(I, thetaRange, velTol)
+    % |----'----!----'----|
+    % Check quarters (') of range to narrow down range to one half of
+    % original, either [|, !], or [!, |]. If first quarter has a greater
+    % variance than the third quarter, new range is [|, !], otherwise it is
+    % [!, |].
+    midTheta = mean(thetaRange);
+%     iTol = (midTheta-thetaRange(1))/2;
+    thetas = [mean([thetaRange(1), midTheta]), mean([midTheta, thetaRange(2)])];
+    [R, xp] = radon(I, thetas);
+
+    % TODO: this assumes that there is some variance--but if the window is
+    % small and there aren't many (or any) clear stripes then that doesn't
+    % work. But then again maybe nothing will work in that case.
+    %Determine maximum variance along columns
+    Variance=var(R);
+    [Y,n]=max(Variance);
+
+    % Determine newThetaRange, which is half of the original thetaRange
+    if n == 1
+        newThetaRange = [thetaRange(n), midTheta];
+    else
+        newThetaRange = [midTheta, thetaRange(n)];
+    end
+
+    % Calculate difference in velocity for 
+    % iTol = abs(diff(tand(newThetaRange)));
+    iTol = min( tand(newThetaRange)-tand(mean(newThetaRange)) );
+    % TODO: does this need to be if/else or just if?
+    if abs(iTol) < velTol
+        theta = thetas(n);
+    else
+        [theta, Y] = optimizeRadonAngleRecurse(I, newThetaRange, velTol);
+    end
+end
+
+% Same functiton as above but using a while loop instead of recursion
+function [theta, Y, flag] = optimizeRadonAngleLoop(I, thetaRange, velTol)
+    % |----'----!----'----|
+    % Check quarters (') of range to narrow down range to one half of
+    % original, either [|, !], or [!, |]. If first quarter has a greater
+    % variance than the third quarter, new range is [|, !], otherwise it is
+    % [!, |].
+    i = 1;
+    maxIter = 5000;
+    iTol = Inf;
+    % Loop until tolerance is less than requested, or maximum number of
+    % iterations is exceeded.
+    while iTol > velTol && i <= maxIter
+        midTheta = mean(thetaRange);
+        thetas = [mean([thetaRange(1), midTheta]), mean([midTheta, thetaRange(2)])];
+        [R, xp] = radon(I, thetas);
+
+        % TODO: this assumes that there is some variance--but if the window is
+        % small and there aren't many (or any) clear stripes then that doesn't
+        % work. But then again maybe nothing will work in that case.
+        %Determine maximum variance along columns
+        Variance=var(R);
+        [Y,n]=max(Variance);
+
+        % Determine newThetaRange, which is half of the original thetaRange
+        theta = thetas(n);
+        if n == 1
+            thetaRange = [thetaRange(n), midTheta];
+        else
+            thetaRange = [midTheta, thetaRange(n)];
+        end
+
+        % Calculate difference in velocity for 
+%         iTol = min(tand(thetaRange)-tand(theta));
+        iTol = abs(diff(tand(thetaRange)));
+        % TODO: does this need to be if/else or just if?
+        % TODO: this may be less readable than a while loop
+        i = i+1;
+    end
+    
+    flag = i <= maxIter;
+    % TODO: if i > maxIter, set the flag;
+end

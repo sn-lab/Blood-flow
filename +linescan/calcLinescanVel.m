@@ -48,8 +48,9 @@ p.addRequired('umPerPx',@(x) isnumeric(x)&&isscalar(x));
 p.addOptional('WinSize',75,@(x) isnumeric(x)&&isscalar(x));
 p.addOptional('WinStep',50,@(x) isnumeric(x)&&isscalar(x));
 p.addOptional('errorcheck',false,@islogical);
-p.addParameter('Method','Radon',@(x) any(strcmp(x, {'Radon', 'SVD'})))
-p.addParameter('Optimizer','fminbnd',@(x) any(strcmp(x, {'fminsearch', 'legacy'})))
+p.addParameter('Method','Radon',@(x) any(strcmp(x, {'Radon', 'SVD'})));
+% p.addParameter('Optimizer','fminbnd',@(x) any(strcmp(x, {'fminsearch', 'legacy'})))
+p.addParameter('Optimizer','fminbnd');
 % TODO: is this the correct validation function?
 p.addParameter('FilterVar', 0, @isfinite);
 % TODO: allow user to flip image for opposite velocity?
@@ -79,22 +80,17 @@ a = p.Results.FilterVar;
     
 % TODO: should use this default name or ask user?
     %Datafile = [char(strrep(OpenName(i),'.tif',['--wpd', num2str(WinPixelsDown)])), date, '.mat'];
-
+% TODO: consider making this the default for all radon methods
 if strcmp(p.Results.Method, 'Radon') && strcmp(p.Results.Optimizer, 'legacy')
     a = 25;
 end
     
 %% Filter Image (if requested)
 % TODO: move this into subfunction?
-
+% This filtering step seems to be very important for radon method in
+% general
 if a
-    %figure(1), imshow(I);
-    %I=makeNoise(I);
-    %figure(2), imshow(I);
-
     %Create high pass flter using isotropic Gaussian
-    % TODO: try to vectorize this
-    % TODO: x and y should be rearranged
     I_size = size(I);
     y = (1:I_size(1))';
     x = 1:I_size(2);
