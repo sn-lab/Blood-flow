@@ -78,6 +78,8 @@ function Result = calcLinescanVelTiff(varargin)
                 s = util.io.str2struct(software);
                 % TODO:
                 % msPerLine = ?;
+            case ''
+                % Do nothing: no ScanImage version found
             otherwise
                 % TODO: is this necessary? Set to NaN??
                 warning(['Unsupported ScanImage version ', version, '. Cannot detect line period from metadata.'])
