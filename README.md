@@ -11,15 +11,19 @@ This repository contains the most up-to-date version of the linescan code used f
 	Input: Raw image stacks
 	Output: Conversion factor for um/pixels of your image.
 
-- 3. **extractVelTiffShared.m** extracts the raw blood flow velocity from each file using a radon transform algorithm. requires um/pixel and ms/line, also requires Texas Red or blood plasma label channel only
+- 3. **extractVelTiffShared.m** extracts the raw blood flow velocity from each file using a **radon transform** algorithm. requires um/pixel and ms/line, also requires Texas Red or blood plasma label channel only
 	Input: Blood labelling channel
 	Output: .mat file with the RAW velocity data
 
-- 4. **view_velocities_save_data.m** extracts the final velocity values by filtering noise and background from the initial measurements. This is done with input from the user
+- 4. **velocity_from_tif.m** extracts the raw blood flow velocity from each file using a **SVD algorithm**. requires um/pixel and ms/line, also requires Texas Red or blood plasma label channel only
+	Input: Blood labelling channel
+	Output: .mat file with the RAW velocity data
+	
+- 5. **view_velocities_save_data.m** extracts the final velocity values by filtering noise and background from the initial measurements. This is done with input from the user
 	Input: rawVel.mat files from extractVelTiffShared.m 
 	Output: rawVel ExcludedPts.mat and excel file with average values of velocity and 	standard deviation 
 
-- 5. **avgDiameterinROI.m** extracts the diameter of the vessel by selecting a rectangular area on the vessel manually. gives value in pixels and user needs to use um/pixel conversion factor to transform to microns
+- 6. **avgDiameterinROI.m** extracts the diameter of the vessel by selecting a rectangular area on the vessel manually. gives value in pixels and user needs to use um/pixel conversion factor to transform to microns
 
 **UN THE FILES IN THE ORDER THEY APPEAR IN THIS README. YOU MAY SKIP #1 AND #2 IF YOU ALREADY HAVE MS/LINE AND PIXEL/UM conversion factors**
 
