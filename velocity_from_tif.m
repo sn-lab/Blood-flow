@@ -470,7 +470,8 @@ if fid ~= -1
 
     for nframe = startframe:endframe
         try 
-            tempframe = imread(filename, startframe);
+%             tempframe = imread(filename, startframe);
+            tempframe = imread(filename, nframe);
         catch
             disp('invalid linenumber');
             break;
