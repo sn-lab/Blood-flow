@@ -199,6 +199,9 @@ function [seperability, Rotdata] = RotateFindSVD(XRAMP, YRAMP, X, Y,I,theta,meth
 end
 
 function Rotdata = RotateWithoutToolbox(I, theta, method)
+    % TODO: this seems to be adding an extra pixel of padding
+
+
     T = [cosd(theta) -sind(theta); sind(theta) cosd(theta)];
     sz = size(I);
     
@@ -240,8 +243,13 @@ function Rotdata = RotateWithoutToolbox(I, theta, method)
 
     outputSize = [numRows numCols];
 
-
     
+    % Pad image for smooth edges
+    I = [zeros(sz(1),1), I, zeros(sz(1),1)];
+    I = [zeros(1,sz(2)+2); I; zeros(1,sz(2)+2)];
+    
+    
+    sz = size(I);
     x = [1, sz(2)];
     y = [1, sz(1)];
     xCentered = x - mean(x);
@@ -263,7 +271,9 @@ function Rotdata = RotateWithoutToolbox(I, theta, method)
     Xq = reshape(Rq(1,:), size(Xq));
     Yq = reshape(Rq(2,:), size(Yq));
     
-    Rotdata = interp2(X, Y, I, Xq, Yq, method, mean(I, 'all'));
+    % TODO: the input image needs to be padded with zeros for same behavior
+    % as imrotate
+    Rotdata = interp2(X, Y, I, Xq, Yq, method, 0);
 
     % TODO: this neeeds to rotate around center i.e. need to have X and Y query
     % and index vectors neg to pos.
