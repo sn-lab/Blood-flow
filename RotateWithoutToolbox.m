@@ -1,6 +1,8 @@
 % NOTE: this is not a perfect replacement for MATLAB's "imrotate" -- very
 % slightly different results
-function IRot = imrotate(I, theta, method, bbox)
+% TODO: need to finish implementing this and allow fill value to be set
+% TODO: maybe allow user to turn on/off smooth edges
+function IRot = imrotate(I, theta, method, bbox, fillval)
     if rem(theta, 90) == 0
         theta = rem(theta, 360);    % Remove multiples of 360
         IRot = rot90(I, theta/90);

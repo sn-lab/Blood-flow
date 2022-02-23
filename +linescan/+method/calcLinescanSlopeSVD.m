@@ -1,55 +1,34 @@
-function [dYdt, MaxSep] = calcLinescanSlopeSVD(varargin)
-% What does this do?
+function [dYdt, MaxSep, IRot] = calcLinescanSlopeSVD(varargin)
+%CALCLINESCANSLOPESVD Summary of this function goes here
+%   Detailed explanation goes here
 
+% Parse inputs
 p = inputParser();
 p.addRequired('I')
-% TODO: are these necessary?
-% TODO: these probably should be addRequired (not guessed)
-% p.addRequired('Tfactor', @(x) isnumeric(x)&&isscalar(x)); % ms/line
-% p.addRequired('Xfactor', @(x) isnumeric(x)&&isscalar(x)); % microns/pixel
 p.addOptional('Optimizer', 'fminbnd', @ischar);
 p.parse(varargin{:});
-
 I = p.Results.I;
-% Xfactor = p.Results.Xfactor;
-% Tfactor = p.Results.Tfactor;
 
-% Make data square?
-% TODO: Try imresize instead??
-% TODO: does it need to be square??
-% sz = size(I);
-% [Xq, Yq] = meshgrid(linspace(1,sz(2),max(sz)), linspace(1,sz(1),max(sz)));
-% I = interp2(I, Xq, Yq);
-% 
-% % TODO: won't this return the same number??? doesn't matter?
-% [WinSize, ~] = size(I);
-% % Pre-calculated numbers for RotateFindSVD, etc
-% MaxXRot = floor(WinSize/sqrt(2));
-% HalfMaxX = round(MaxXRot/2);
-% MidSmall = round(WinSize/2);
+% TODO: does input data need to be square??
 
-% OPTIMIZATION PARAMETERS
-% [XRAMP, YRAMP] = meshgrid((1:WinSize) - MidSmall, MidSmall-(1:WinSize));
-% [X, Y] = meshgrid((1:MaxXRot) - HalfMaxX, HalfMaxX-(1:MaxXRot));
 
-sz = size(I);
+% Transformation parameters
 method = 'bilinear';    % interpolation method for rotating image
 bbox = 'crop';
 
+% Optimization parameters
 % TODO: does this need to be 0:180? or -90:90?
-% MinTheta = 0;           % Starting negative value for angles of rotation
-MinTheta = 0;           % Starting negative value for angles of rotation
-MaxTheta = 90;       % Starting positive limit for angles of rotation
-Theta0 = 45;
-
+MinTheta = 0;           % Minimum rotation angle
+MaxTheta = 90;          % Maximum rotation angle
+Theta0 = 45;            % Starting rotation angle
 % TODO: tolerance should probably be for velocity, not for angle, that way
 % it's linear
-% TODO: this is used as the tolerance for differences in the separabilty in
-% the legacy function which is inconsistent with how it's use in other
-% optimizers. Should redefine to be ThetaTol...
-
 ThetaTol = 0.01;
 Steps = 50;
+
+
+% Construct objective function
+
 
 
 % Find angle of maximum separability
@@ -69,25 +48,23 @@ switch p.Results.Optimizer
         [angle, MaxSep] = optimizeSVDAngleMultiStart(fun, Theta0, MinTheta, MaxTheta, ThetaTol, Steps);
 end
 
-% TODO: Need to check exitflag, etc?
+
+% TODO: Need to modify output based on exitflag or just return the
+% exitflag?
 %     if ~exitflag
 %         angle = NaN; %OR 50?
 %         MaxSep = NaN; %OR 0?
 %     end
 
+
 % Calculate velocity using angle and direction
 angle = -angle;
-
-% TODO: return IRot?
 % TODO: should bbox be same here?
 IRot = imrotate(I, angle, method, bbox);
-if isLinescanVertical(IRot)
-    % Linescan has a negative slope
-    % TODO: is there more complicated math involved here?
+if isLinescanVertical(IRot) % Linescan has a negative slope
     angle = angle + 90;
 end
 dYdt = tand(angle);
-
 end
 
 
@@ -124,19 +101,21 @@ function [angle, MaxSep, exitflag] = optimizeSVDAngleFminbnd(fun, MinTheta, MaxT
 end
 
 
-
+% TODO: probably need to restore this to true legacy
 function [OptimalTheta, MaxSep, exitflag] = optimizeSVDAngleLegacy(fun, MinTheta, MaxTheta, ThetaTol, Steps)
 
 % Initializations
 exitflag = false;
+outOfRange = false;
 loops = 1;
-% OldSep = 0;
-dTheta = (MaxTheta - MinTheta)/Steps;
+MinThetaIter = MinTheta;
+MaxThetaIter = MaxTheta;
+dTheta = (MaxThetaIter - MinThetaIter)/Steps;
 
-while not(exitflag) && loops <= 100
-    % TODO: below two lines could be moved out of while loop for efficiency
-    Angles = MinTheta:dTheta:MaxTheta;
-    
+while not(exitflag) && loops <= 100 && not(outOfRange)
+    % Compute objective function for angle values from MinThetaIter to
+    % MaxThetaIter in steps of dTheta
+    Angles = MinThetaIter:dTheta:MaxThetaIter;
     nAngles = length(Angles);
     Sep = zeros(1, nAngles);
     % loop for each value of Angles
@@ -145,68 +124,58 @@ while not(exitflag) && loops <= 100
     end
     
     [MaxSep, Index] = max(Sep);
+    OptimalTheta = Angles(Index);
     if Index==1   % rotation is too large and positive
-        if MaxTheta >= 90
-            % TODO: what is this case handling and why is it setting the
-            % FoundMax flag to true?
-%             MaxTheta = NaN;
-%             MaxSep = 0;
-%             Result = [Nframes,WinTop, 50, 0, 0,0, (Nframes-1)*Period + 1/1000/TfactorUse*(WinNumber-1)*WinPixelsDown, Nframes,0,0];
-            exitflag = true;
+        if MaxThetaIter >= MaxTheta
+            outOfRange = true;
         else
-            MaxTheta = MaxTheta + 3*dTheta;
+            MaxThetaIter = MaxThetaIter + 3*dTheta;
             % TODO: why not increase this as well?
-            MinTheta = Angles(Index+1);
+            MinThetaIter = Angles(Index+1);
         end
     elseif Index == nAngles % rotation is too large and negative  
-        if MinTheta <= -90
-            % TODO: what is this case handling and why is it setting the
-%             MaxTheta = NaN;
-%             MaxSep = 0;
-%             Result = [Nframes,WinTop,50, 0, 0,0,(Nframes-1) *Period + 1/1000/TfactorUse*(WinNumber-1)*WinPixelsDown, Nframes,0,0];
-            exitflag = true;
+        if MinThetaIter <= MinTheta
+            outOfRange = true;
         else
-            MinTheta = MinTheta - 3*dTheta;
-            MaxTheta = Angles(Index-1);
+            MinThetaIter = MinThetaIter - 3*dTheta;
+            MaxThetaIter = Angles(Index-1);
         end
-else % found a good rotation
-%         if abs(MaxSep - OldSep)<ThetaTol
+    else % found a good rotation
         [~,inds] = maxk(Sep, 2);
         if abs(diff(Angles(inds))) < ThetaTol
-            % TODO: this makes no fucking sense because if you run the same
-            % angle twice, you'll get a separation of 0 even though you
-            % neveer checked other points...
-            % TODO: matybe this should be assigned at the beginning of the
-            % while loop
-            OptimalTheta = Angles(Index);
             exitflag = true; %set flag for exiting loop for window
-            % TODO: this should be setting the MaxTheta to Angles(Index)
         else % new angle range
             % TODO: this is going to end up repeating the same angles which
             % is an unfortunate waste of time...
-            MaxTheta = Angles(Index)+2*dTheta;
-            MinTheta = Angles(Index)-2*dTheta;
+            MaxThetaIter = Angles(Index)+2*dTheta;
+            MinThetaIter = Angles(Index)-2*dTheta;
             dTheta = dTheta/2;  % NAR Addition
 %             OldSep = MaxSep;
         end
-    end %if index
+    end
     
     loops = loops + 1;
 end % while loop for thetas
 end
-        
-%% Objective Function
-function [seperability, IRot] = RotateSVDSep(I,theta,method,bbox)
-% function [seperability, Rotdata] = RotateFindSVD(XRAMP, YRAMP, X, Y,I,theta,method)
-%RotateFindSVD - rotates I, calculates SVD, and returns seperability
+
+%% Transformation Functions
+function [IRot] = RotateImage(I,theta,method,bbox)
 %     Rotdata = RotateWithoutToolbox(XRAMP, YRAMP, X, Y,I,theta,method);
     IRot = imrotate(I, theta, method, bbox);
-    S = svd(IRot);
+end
+
+% TODO: radon transform function would go here
+% function R = RadonImage(I,theta)
+% end
+
+%% Metric Functions
+function sep = separability (J)
+    S = svd(J);
     % TODO: is there a better weighting scheme here to deal with values
     % outside of original image e.g. set to NaN? These seem to be affecting
     % the separability. i.e. separability decreases with more 0 values
     % (near 45 degrees)
-    seperability = S(1)^2/sum(S.^2);
+    sep = S(1)^2/sum(S.^2);
 end
 
 %% Helper functions
