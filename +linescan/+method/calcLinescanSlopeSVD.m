@@ -169,7 +169,7 @@ end
 % end
 
 %% Metric Functions
-function sep = separability (J)
+function sep = separability(J)
     S = svd(J);
     % TODO: is there a better weighting scheme here to deal with values
     % outside of original image e.g. set to NaN? These seem to be affecting
