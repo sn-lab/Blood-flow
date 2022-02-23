@@ -121,10 +121,10 @@ end
     switch p.Results.Method
         case 'Radon'
 %             calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelRadon(block, Tfactor, Xfactor);
-            calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelRadon(block, p.Results.Optimizer);
+            calcLinescanVelFcn = @(block) linescan.method.calcLinescanSlopeRadon(block, p.Results.Optimizer);
         case 'SVD'
 %             calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelSVD(block, Tfactor, Xfactor);
-            calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelSVD(block, p.Results.Optimizer);
+            calcLinescanVelFcn = @(block) linescan.method.calcLinescanSlopeSVD(block, p.Results.Optimizer);
     end
     
     for iWin = 1:1:nWins
