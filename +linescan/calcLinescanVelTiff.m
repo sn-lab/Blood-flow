@@ -7,8 +7,9 @@ function Result = calcLinescanVelTiff(varargin)
     p.addParameter('msPerLine',NaN,@(x) isnumeric(x)&&isscalar(x));
     p.addParameter('umPerPx',NaN,@(x) isnumeric(x)&&isscalar(x));
     p.addParameter('Mask','Visual',@(x) ischar(x)||isvector(x))
-    p.addParameter('Method','Radon',@ischar);
-    p.addParameter('Optimizer','fminbnd',@ischar);
+    p.addParameter('Transform','Radon',@ischar);
+    p.addParameter('Metric','Var',@ischar);
+    p.addParameter('Optimizer','globalsearch',@ischar);
     p.addParameter('MaxLines',inf);
     p.addParameter('UseAvg',false,@islogical);
     p.parse(varargin{:});

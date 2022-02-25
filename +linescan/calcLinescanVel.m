@@ -53,7 +53,7 @@ p.addOptional('errorcheck',false,@islogical);
 % TODO: add validiation function? @(x) any(strcmp(x, {'fminsearch', 'legacy'})))
 p.addParameter('Transform','Radon',@(x) any(strcmp(x, {'Radon', 'Rotate'})));
 p.addParameter('Metric','Var',@(x) any(strcmp(x, {'Sep', 'Var'})));
-p.addParameter('Optimizer','fminbnd');
+p.addParameter('Optimizer','globalsearch');
 p.addParameter('FilterVar', 0, @isfinite);
 p.parse(varargin{:});
 
