@@ -115,9 +115,9 @@ end
     
     
     % Function handle for calculating linescan slope
-    calcLinescanSlopeFcn = @(block) linescan.calcLinescanAngle(...
-        block, 'Optimizer', p.Results.Optimizer, 'Transform',...
-        p.Results.Transform, 'Metric', p.Results.Metric);
+    calcLinescanAngleFcn = @(block) linescan.calcLinescanAngle(...
+        block,'Transform',p.Results.Transform, 'Metric', p.Results.Metric,...
+        'Optimizer', p.Results.Optimizer);
 
 %     % Pick function to calculate velocity
 %     switch p.Results.Method
@@ -145,7 +145,7 @@ end
         % TODO: should time be average time or start time of block?
         Result(iWin,2) = iWin*WinPixelsDown/Tfactor;
         % Velocity
-        Result(iWin,3) = dYdt*Xfactor*Tfactor;
+        Result(iWin,3) = dXdt*Xfactor*Tfactor;
         Result(iWin,4) = metric;
         
         

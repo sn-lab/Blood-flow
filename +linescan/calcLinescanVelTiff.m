@@ -109,8 +109,10 @@ function Result = calcLinescanVelTiff(varargin)
         T.umPerPx(iFile) = umPerPx;
         T.MaskLeft(iFile) = MaskLeft;
         T.MaskRight(iFile) = MaskRight;
-        T.Method{iFile} = categorical({p.Results.Method}, {'Radon', 'SVD'});
-        T.Optimizer{iFile} = categorical({p.Results.Optimizer}, {'fminbnd', 'legacy'});
+        T.Transform{iFile} = categorical({p.Results.Transform}, {'Radon', 'SVD'});
+        T.Metric{iFile} = categorical({p.Results.Metric}, {'Var', 'Sep'});
+        T.Optimizer{iFile} = categorical({p.Results.Optimizer}, {'globalsearch', 'multistart',...
+        'binarysearch', 'exhaustive', 'radonlegacy', 'svdlegacy'});
         T.MaxLines(iFile) = p.Results.MaxLines;
         T.UseAvg(iFile) = p.Results.UseAvg;
         

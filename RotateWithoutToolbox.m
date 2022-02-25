@@ -1,16 +1,16 @@
 % NOTE: this is not a perfect replacement for MATLAB's "imrotate" -- very
 % slightly different results
-% TODO: need to finish implementing this and allow fill value to be set
 % TODO: maybe allow user to turn on/off smooth edges
 % TODO: varargin??
 % Theta in degrees
-function IRot = imrotate(I, theta, method, bbox, fillval)
+function IRot = imrotate(I, theta, method, bbox, fillval, smooth)
     p = inputParser;
     p.addRequired('I')
     p.addRequired(theta, @isreal);
     p.addOptional('method', 'nearest')  % Let interp2 validate this input
     p.addOptional('bbox', 'loose', @(x) any(strcmp(x, {'loose', 'crop'})));
     p.addOptional('fillval', 0);
+    p.addOptional('smooth', false);
     p.parse(varargin{:});
     
     
@@ -55,10 +55,12 @@ function IRot = imrotate(I, theta, method, bbox, fillval)
         end
 
         % Pad image for smooth edges
-        I = [zeros(sz(1),1), I, zeros(sz(1),1)];
-        I = [zeros(1,sz(2)+2); I; zeros(1,sz(2)+2)];
-        xMid = xMid + 1;
-        yMid = yMid + 1;
+        if smooth
+            I = [zeros(sz(1),1), I, zeros(sz(1),1)];
+            I = [zeros(1,sz(2)+2); I; zeros(1,sz(2)+2)];
+            xMid = xMid + 1;
+            yMid = yMid + 1;
+        end
 
 
         [XqOrig, YqOrig] = meshgrid(xLimitsOutInt(1):xLimitsOutInt(2), yLimitsOutInt(1):yLimitsOutInt(2));
