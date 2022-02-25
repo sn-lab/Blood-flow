@@ -110,7 +110,7 @@ function Result = calcLinescanVelTiff(varargin)
         T.umPerPx(iFile) = umPerPx;
         T.MaskLeft(iFile) = MaskLeft;
         T.MaskRight(iFile) = MaskRight;
-        T.Transform{iFile} = categorical({p.Results.Transform}, {'Radon', 'SVD'});
+        T.Transform{iFile} = categorical({p.Results.Transform}, {'Radon', 'Rotate'});
         T.Metric{iFile} = categorical({p.Results.Metric}, {'Var', 'Sep'});
         T.Optimizer{iFile} = categorical({p.Results.Optimizer}, {'globalsearch', 'multistart',...
         'binarysearch', 'exhaustive', 'radonlegacy', 'svdlegacy'});
@@ -142,7 +142,8 @@ function Result = calcLinescanVelTiff(varargin)
         WinSize = T.WinSize(iFile);
         WinStep = T.WinStep(iFile);
         errorcheck = false;
-        method = char(T.Method{iFile});
+        transform = char(T.Transform{iFile});
+        metric = char(T.Metric{iFile});
         optimizer = char(T.Optimizer{iFile});
         
         % Read full image stack and reshape to 2D
@@ -169,7 +170,7 @@ function Result = calcLinescanVelTiff(varargin)
 
         % Run Linescan
     %     tic
-        Result = linescan.calcLinescanVel(I, msPerLine, umPerPx, WinSize, WinStep, errorcheck, 'Method', method, 'Optimizer', optimizer);
+        Result = linescan.calcLinescanVel(I, msPerLine, umPerPx, WinSize, WinStep, errorcheck, 'Transform', transform, 'Metric', metric, 'Optimizer', optimizer);
     %     toc
 
         % TODO: save Result
