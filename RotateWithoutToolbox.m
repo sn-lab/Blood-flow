@@ -2,7 +2,18 @@
 % slightly different results
 % TODO: need to finish implementing this and allow fill value to be set
 % TODO: maybe allow user to turn on/off smooth edges
+% TODO: varargin??
+% Theta in degrees
 function IRot = imrotate(I, theta, method, bbox, fillval)
+    p = inputParser;
+    p.addRequired('I')
+    p.addRequired(theta, @isreal);
+    p.addOptional('method', 'nearest')  % Let interp2 validate this input
+    p.addOptional('bbox', 'loose', @(x) any(strcmp(x, {'loose', 'crop'})));
+    p.addOptional('fillval', 0);
+    p.parse(varargin{:});
+    
+    
     if rem(theta, 90) == 0
         theta = rem(theta, 360);    % Remove multiples of 360
         IRot = rot90(I, theta/90);
@@ -14,8 +25,9 @@ function IRot = imrotate(I, theta, method, bbox, fillval)
 
         switch bbox
             case 'crop'
-                error('Not yet supported')
-                
+                warning('Not yet supported')
+                xLimitsOutInt = [1, sz(2)];
+                yLimitsOutInt = [1, sz(1)];
             case 'loose'
                 % Calculate corner points
                 xLimitsIn = [1 sz(2)];
@@ -56,6 +68,6 @@ function IRot = imrotate(I, theta, method, bbox, fillval)
         Xq = T(1,1).*XqOrig + T(1,2).*YqOrig + xMid;
         Yq = T(2,1).*XqOrig + T(2,2).*YqOrig + yMid;
 
-        IRot = interp2(I, Xq, Yq, method, 0);
+        IRot = interp2(I, Xq, Yq, method, fillval);
     end
 end

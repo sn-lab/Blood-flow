@@ -115,7 +115,7 @@ end
     
     
     % Function handle for calculating linescan slope
-    calcLinescanSlopeFcn = @(block) linescan.calcLinescanSlope(...
+    calcLinescanSlopeFcn = @(block) linescan.calcLinescanAngle(...
         block, 'Optimizer', p.Results.Optimizer, 'Transform',...
         p.Results.Transform, 'Metric', p.Results.Metric);
 
@@ -133,8 +133,13 @@ end
         % TODO: use im2double instead?
         block = double(I(first(iWin):last(iWin), :));
 %         block = im2double(I(first(iWin):last(iWin), :));
-        [dYdt, metric] = calcLinescanSlopeFcn(block);
+        [angle, metric] = calcLinescanAngleFcn(block);
         
+        % Slope is actually opposite tand(thetaMax) because tand provides slope
+        % in cartesian coordinates as opposed to image coordinates where Y-axis
+        % increases going down, rather than up.
+        dXdt = -tand(angle);
+
         % TODO: change this to first, last? Or this is supposed to be time?
         Result(iWin,1) = first(iWin);
         % TODO: should time be average time or start time of block?

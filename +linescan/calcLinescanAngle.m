@@ -1,9 +1,41 @@
-function [dXdt, fval, IRot] = calcLinescanSlope(varargin)
-% TODO: consider renaming this to calcLinescanAngle?
-%UNTITLED7 Summary of this function goes here
-%   Detailed explanation goes here
+function [angle, fval, IRot] = calcLinescanAngle(varargin)
+%calcLinescanAngle Calculate angle of linescan image section
+%   [angle] = calcLinescanAngle(I) Returns angle of input linescan image
+%   section I. Uses a _ optimizer to  maximize the variance of a Radon as a
+%   function of angle.
 
+%   [angle,fval,IRot] = calcLinescanAngle(I) Returns angle of input
+%   linescan image section I, as well as the maximum variance of the Radon
+%   transform at that angle (fval), and the rotated image section at that
+%   angle (IRot)
 
+%   [___] = calcLinescanAngle(___,Name,Value) specifies name-value pair
+%   arguments to control various aspects of the geometric transformation.
+
+%       Parameter name      Value
+%       --------------      -----
+%       'Transform'         One of 'Radon' or 'Rotate' specfies the
+%                           angle-based transformation (image rotation or 
+%                           radon transform) used to transform the image 
+%                           so the degree of horizontality/verticality of
+%                           the linescan stripes can be measured by the
+%                           'Metric' function.
+%  
+%       'Metric'            One of 'Var' or 'Sep' specfies the function
+%                           (variability or separability (SVD)) used to
+%                           measure the degreee of
+%                           horizontality/verticality of the linescan
+%                           stripes after the angle-based transformation
+%                           'Transform'
+% 
+%       'Optimzier'         One of 'globalsearch', 'multistart',
+%                           'binarysearch', 'exhaustive', 'radonlegacy', or
+%                           'svdlegacy' specifies the optimization function
+%                           used to optimize the transformation angle in
+%                           order to maximize the output value of the
+%                           'Metric' function.
+
+% TODO: document optimzation options if allowing that as an input
 % I = Input image
 % options.I_sign = 1 for positive slope, 0 for negative, 2 for both
 
@@ -12,80 +44,74 @@ p.addRequired('I')
 % TODO: maybe this should be passed as a function handle to allow user to
 % pass other arguments such as options.I_sign and customize optimizer
 
-% TODO: add validiation function? @(x) any(strcmp(x, {'fminsearch', 'legacy'})))
-% TODO: should this be a function handle instead? Better validation?
-p.addParameter('Transform','Radon',@(x) any(strcmp(x, {'Radon', 'Rotate'})));
-p.addParameter('Metric','Var',@(x) any(strcmp(x, {'Sep', 'Var'})));
-p.addParameter('Optimizer','fminbnd');
-p.addOptional('options', struct(), @isstruct);
+% TODO: Allow funciton handles to be passed?
+p.addParameter('Transform','Radon',@validateTransform);
+p.addParameter('Metric','Var',@validateMetric);
+p.addParameter('Optimizer','globalsearch',@validateOptimizer);
+p.addParameter('options', struct(), @isstruct);
 p.parse(varargin{:});
 % TODO: allow optimset - optimizer settings e.g. options.I_sign
 I = p.Results.I;
 options = p.Results.options;
 
 % Transformation parameters
-% TODO: reconsider min/max theta
-method = 'bilinear';    % interpolation method for rotating image
-bbox = 'crop';
+method = 'bilinear';        % interpolation method for rotating image
+bbox = 'crop';              % bounding box of rotated image
+fillval = mean(I, 'all');
+smooth = true;
+
 MaxTheta = 90;          % Maximum rotation angle
 switch p.Results.Transform
     case 'Radon'
         TransformFun = @(angle) RadonImage(I,angle);
         MinTheta = -90;
     case 'Rotate'
-        TransformFun = @(angle) RotateImage(I,angle,method,bbox);
-        % TODO: does input data need to be square??
+        TransformFun = @(angle) RotateImage(I,angle,method,bbox,fillval,smooth);
         MinTheta = 0;           % Minimum rotation angle
 end
 
 % TODO: change the function to allow handle inputs so don't have to do this
 % silly switch case
 switch p.Results.Metric
-    case 'Var'
+    case 'Var'  % Variance
         MetricFun = @variability;
-    % TODO: should this be renamed to separability?
-    case 'Sep'
+    case 'Sep'  % Separability (SVD)
         MetricFun = @separability;
 end
 
 
 % Optimization parameters
-% TODO: does this need to be 0:180? or -90:90?
 Theta0 = 45;            % Starting rotation angle
-% TODO: tolerance should probably be for velocity, not for angle, that way
-% it's linear
-ThetaTol = 0.01;
+% TODO: allow user to set the equivalent parameters for other optimizers?
 Steps = 50;
+ThetaTol = 0.01;        % NOTE: tolerance is in theta units which is not
+                        % linearly related to velocity i.e. velocity
+                        % tolerance will vary
 
 % Objective function is inverted because these otpimizers are minimizers
 ObjectiveFun = @(angle) -MetricFun(TransformFun(angle));
 
-% Optimization parameters
-% TODO: construct objective function
-
-% TODO: can we just use dX/dt or are we also worried about tolerance due to
-% different Tfactor/Xfactor i.e. will these cause nonlinear????
-% TODO: maybe can switch back to just output angle
-% TODO: pull slope calculation out of all objective functions???
+% Run optimization
 switch p.Results.Optimizer
-    case 'fminbnd'
-        [angle, fval] = optimizeSVDAngleFminbnd(ObjectiveFun, MinTheta, MaxTheta, ThetaTol, Steps);
-    case 'svdlegacy'
-        [angle, fval] = optimizeSVDAngleLegacy(ObjectiveFun, MinTheta, MaxTheta, ThetaTol, Steps);
-    case 'binarysearch'
-        [angle, fval] = optimizeRadonAngleLoop(ObjectiveFun,I, [MinTheta,MaxTheta], ThetaTol);
-    case 'exhaustive'
-        [angle, fval] = optimizeRadonAngleExhaustive(ObjectiveFun,I, options);
-    case 'radonlegacy'
-        options.Thetas = 'orig';    % Or 'simple'
-        [angle, fval] = optimizeRadonAngleExhaustive(ObjectiveFun,I, options);
+% TODO: remove fminbnd because it's a local optimizer???
+%     case 'fminbnd'
+%         [angle, fval] = optimizeSVDAngleFminbnd(ObjectiveFun, MinTheta, MaxTheta, ThetaTol, Steps);
     case 'globalsearch'
         nTrialPts = 45;
         nStage1pts = 9;
-        [angle, fval] = optimizeSVDAngleGlobalSearch(ObjectiveFun, Theta0, MinTheta, MaxTheta, ThetaTol, nTrialPts, nStage1pts);
+        [angle, fval] = optimizeAngleGlobalSearch(ObjectiveFun, Theta0, MinTheta, MaxTheta, ThetaTol, nTrialPts, nStage1pts);
     case 'multistart'
         k = 15;
-        [angle, fval] = optimizeSVDAngleMultiStart(ObjectiveFun, Theta0, MinTheta, MaxTheta, ThetaTol, k);
+        [angle, fval] = optimizeAngleMultiStart(ObjectiveFun, Theta0, MinTheta, MaxTheta, ThetaTol, k);
+    case 'binarysearch'
+        [angle, fval] = optimizeAngleLoop(ObjectiveFun,I, [MinTheta,MaxTheta], ThetaTol);
+    case 'exhaustive'
+        [angle, fval] = optimizeAngleExhaustive(ObjectiveFun,I, options);
+    case 'radonlegacy'
+        options.Thetas = 'orig';    % Or 'simple'
+        [angle, fval] = optimizeAngleExhaustive(ObjectiveFun,I, options);
+    case 'svdlegacy'
+        [angle, fval] = optimizeAngleSVDLegacy(ObjectiveFun, MinTheta, MaxTheta, ThetaTol, Steps);
     otherwise
         error([p.Results.Optimizer ' is not a valid optimizer']);
 end
@@ -93,23 +119,21 @@ end
 % Revert function value to positive
 fval = -fval;
     
-% TODO: Need to modify output based on exitflag or just return the
-% exitflag?
+% TODO: What is expected behavior when optimization fails? Return value of
+% last evaluation or return NaN? i.e. modify output based on exitflag or
+% just return the exitflag?
 %     if ~exitflag
 %         angle = NaN; %OR 50?
 %         MaxSep = NaN; %OR 0?
 %     end
 
 
-% TODO: should bbox be same here?
-% TODO: should image be rotated even if SVD wasn't used? Should this
-% function really output the rotated image?
-IRot = imrotate(I, angle, method, bbox);
-
 % Deal with "Rotate" Tranform which only requires angles (0,90) but needs a
 % check to see if output is vertical or horizontal
 if strcmp(p.Results.Transform, 'Rotate')
     angle = -angle;
+    % TODO: should bbox be same here?
+    IRot = imrotate(I, angle, method, bbox);
     if isLinescanVertical(IRot) % Linescan has a negative slope
         angle = angle + 90;
     end
@@ -117,18 +141,7 @@ else
     angle = angle - 90;
 end
 
-% Slope is actually opposite tand(thetaMax) because tand provides slope
-% in cartesian coordinates as opposed to image coordinates where Y-axis
-% increases going down, rather than up.
-dXdt = -tand(angle);
-
 end
-
-
-
-
-
-
 
 
 %% Optimization Functions
@@ -138,20 +151,23 @@ end
 % unconstrained. In reality, we have to set limits on velocity and...
 % (-inf,inf)convergence of optimization function is more consistent when restricted
 % peformed on
+% Note also that a slope (dX/dt) is linearly related to velocity but must
+% i.e. if we want a velocity tolerance, we must optimize on on slope (or
+% velocity) but if using slope, need to scale by the umPerPx and msPerLine.
 
-function [angle, Y, exitflag] = optimizeSVDAngleFminbnd(fun, MinTheta, MaxTheta, ThetaTol, Steps)
-%     fun = @(Theta) 1-(RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method));
-    % TODO: set MaxFunEvals and MaxIter?
-    % TODO: change the standard here in optimizeWithoutToolbox
-    % TODO: move "Steps" out?
-    Steps = Steps*100;
-    options = optimset('MaxIter', Steps, 'TolX', ThetaTol);
-    [angle,Y,exitflag] = fminbnd(fun, MinTheta, MaxTheta, options);
-end
+% function [angle, Y, exitflag] = optimizeAngleFminbnd(fun, MinTheta, MaxTheta, ThetaTol, Steps)
+% %     fun = @(Theta) 1-(RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method));
+%     % TODO: set MaxFunEvals and MaxIter?
+%     % TODO: change the standard here in optimizeWithoutToolbox
+%     % TODO: move "Steps" out?
+%     Steps = Steps*100;
+%     options = optimset('MaxIter', Steps, 'TolX', ThetaTol);
+%     [angle,Y,exitflag] = fminbnd(fun, MinTheta, MaxTheta, options);
+% end
 
 
 % (SVD) Optimization Functions
-function [angle, MaxSep, exitflag] = optimizeSVDAngleGlobalSearch(fun, Theta0, MinTheta, MaxTheta, ThetaTol, nTrialPts, nStage1pts)
+function [angle, MaxSep, exitflag] = optimizeAngleGlobalSearch(fun, Theta0, MinTheta, MaxTheta, ThetaTol, nTrialPts, nStage1pts)
     % TODO: these parameters can probably be tuned for faster and more robust optimization
     rng default % For reproducibility
 %     opts = optimoptions(@fmincon,'Algorithm','sqp');
@@ -163,7 +179,7 @@ function [angle, MaxSep, exitflag] = optimizeSVDAngleGlobalSearch(fun, Theta0, M
     MaxSep = 1-MinSep;
 end
 
-function [angle, fval, exitflag] = optimizeSVDAngleMultiStart(fun, Theta0, MinTheta, MaxTheta, ThetaTol, k)
+function [angle, fval, exitflag] = optimizeAngleMultiStart(fun, Theta0, MinTheta, MaxTheta, ThetaTol, k)
     rng default % For reproducibility
 %     opts = optimoptions(@fmincon,'Algorithm','sqp');
     problem = createOptimProblem('fmincon','objective',...
@@ -174,7 +190,7 @@ end
 
 
 % TODO: probably need to restore this to true legacy
-function [OptimalTheta, MaxSep, exitflag] = optimizeSVDAngleLegacy(fun, MinTheta, MaxTheta, ThetaTol, Steps)
+function [OptimalTheta, MaxSep, exitflag] = optimizeAngleSVDLegacy(fun, MinTheta, MaxTheta, ThetaTol, Steps)
 
 % Initializations
 exitflag = false;
@@ -231,7 +247,7 @@ end % while loop for thetas
 end
 
 
-function [dXdt, fval] = optimizeRadonAngleExhaustive(I, options)
+function [dXdt, fval] = optimizeAngleExhaustive(I, options)
 % This function performs the radon transform on a precalculated list of
 % angles (approximately evenly spaced in velocity units), and only afer
 % picks the angle from that list that that produced the radon transform
@@ -341,7 +357,7 @@ end
 % radon is evaluated for by doing some sort of optimization. This function
 % essentially uses a binary search to optimize theta.
 % TODO: tolerance should be in velocity units, not theta units....
-function [theta, fval] = optimizeRadonAngleRecurse(I, thetaRange, velTol)
+function [theta, fval] = optimizeAngleRecurse(I, thetaRange, velTol)
     % |----'----!----'----|
     % Check quarters (') of range to narrow down range to one half of
     % original, either [|, !], or [!, |]. If first quarter has a greater
@@ -373,12 +389,12 @@ function [theta, fval] = optimizeRadonAngleRecurse(I, thetaRange, velTol)
     if abs(iTol) < velTol
         theta = thetas(n);
     else
-        [theta, fval] = optimizeRadonAngleRecurse(I, newThetaRange, velTol);
+        [theta, fval] = optimizeAngleRecurse(I, newThetaRange, velTol);
     end
 end
 
 % Same function as above but using a while loop instead of recursion
-function [theta, fval, flag] = optimizeRadonAngleLoop(I, thetaRange, velTol)
+function [theta, fval, flag] = optimizeAngleLoop(I, thetaRange, velTol)
     % |----'----!----'----|
     % Check quarters (') of range to narrow down range to one half of
     % original, either [|, !], or [!, |]. If first quarter has a greater
@@ -424,11 +440,22 @@ end
 
 
 %% Transformation Functions
-function IRot = RotateImage(I,theta,method,bbox)
-    IRot = imrotate(I, theta, method, bbox);
+function IRot = RotateImage(I,theta,method,bbox,fillval,smooth)
+% Use imwarp instead of imrotate for more customization
+%     IRot = imrotate(I, theta, method, bbox);
+
+    rot = [cosd(theta) -sind(theta) 0; sind(theta) cosd(theta) 0; 0 0 1];
+    tform = affine2d(rot);
+%     rigidTform = rigid2d(rot, [0 0]);
+    switch bbox
+        case 'crop'
+            outview = affineOutputView(size(I),tform,'BoundsStyle','CenterOutput');
+        case 'loose'
+            outview = affineOutputView(size(I),tform,'BoundsStyle','FollowOutput');
+    end
+    IRot = imwarp(I, tform, method, 'OutputView', outview, 'FillValues', fillval, 'SmoothEdges', smooth);
 end
 
-% TODO: radon transform function would go here
 function R = RadonImage(I,theta)
     R = radon(I, theta);
 end
@@ -440,6 +467,8 @@ function sep = separability(J)
     % outside of original image e.g. set to NaN? These seem to be affecting
     % the separability. i.e. separability decreases with more 0 values
     % (near 45 degrees)
+    % TODO: maybe this will be fixed by setting the fillval to image mean
+    % in RotateIMage
     sep = S(1)^2/sum(S.^2);
 end
 
@@ -456,6 +485,21 @@ function tf = isLinescanVertical(Rotdata)
     vertstd = std(mean(Rotdata,1));
     horzstd = std(mean(Rotdata, 2));
     tf = vertstd > horzstd; %lines are horizontal
+end
+
+function tf = validateTransform(metric)
+    tf = isa(metric, 'function_handle') || any(strcmp(metric, {'Radon', 'Rotate'}));
+end
+
+function tf = validateMetric(metric)
+    tf = isa(metric, 'function_handle') || any(strcmp(metric, {'Sep', 'Var'}));
+end
+
+function tf = validateOptimizer(optimizer)
+    isafunction = isa(optimizer, 'function_handle');
+    isavalidchar = any(strcmp(optimizer,{'globalsearch', 'multistart',...
+        'binarysearch', 'exhaustive', 'radonlegacy', 'svdlegacy'}));
+    tf = isafunction || isavalidchar;
 end
 
 % TODO: generalize this to allow other optimization functions to use
