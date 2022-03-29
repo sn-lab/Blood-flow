@@ -138,7 +138,7 @@ end
         % Slope is actually opposite tand(thetaMax) because tand provides slope
         % in cartesian coordinates as opposed to image coordinates where Y-axis
         % increases going down, rather than up.
-        dXdt = -tand(angle);
+        dXdt = -1/tand(angle);
 
         % TODO: change this to first, last? Or this is supposed to be time?
         Result(iWin,1) = first(iWin);

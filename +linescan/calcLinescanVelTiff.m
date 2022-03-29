@@ -12,6 +12,7 @@ function Result = calcLinescanVelTiff(varargin)
     p.addParameter('Optimizer','globalsearch',@ischar);
     p.addParameter('MaxLines',inf);
     p.addParameter('UseAvg',false,@islogical);
+    p.addParameter('FilterVar',25,@isreal);
     p.parse(varargin{:});
     
     
@@ -91,6 +92,7 @@ function Result = calcLinescanVelTiff(varargin)
         % Check if metadata matches input
         if ~isnan(p.Results.msPerLine) && msPerLine ~= p.Results.msPerLine
             warning('Input msPerLine does not match XResolution in Tiff header data');
+            msPerLine = p.Results.msPerLine;
         end
         
         %% TODO: get mask
@@ -116,6 +118,7 @@ function Result = calcLinescanVelTiff(varargin)
         'binarysearch', 'exhaustive', 'radonlegacy', 'svdlegacy'});
         T.MaxLines(iFile) = p.Results.MaxLines;
         T.UseAvg(iFile) = p.Results.UseAvg;
+        T.FilterVar(iFile) = p.Results.FilterVar;
         
     end
     
@@ -145,6 +148,7 @@ function Result = calcLinescanVelTiff(varargin)
         transform = char(T.Transform{iFile});
         metric = char(T.Metric{iFile});
         optimizer = char(T.Optimizer{iFile});
+        filtervar = T.FilterVar(iFile);
         
         % Read full image stack and reshape to 2D
         hTiffReader = util.io.readTiffStack(Openfile{iFile});
@@ -170,13 +174,13 @@ function Result = calcLinescanVelTiff(varargin)
 
         % Run Linescan
     %     tic
-        Result = linescan.calcLinescanVel(I, msPerLine, umPerPx, WinSize, WinStep, errorcheck, 'Transform', transform, 'Metric', metric, 'Optimizer', optimizer);
+        Result = linescan.calcLinescanVel(I, msPerLine, umPerPx, WinSize, WinStep, errorcheck, 'Transform', transform, 'Metric', metric, 'Optimizer', optimizer, 'FilterVar',filtervar);
     %     toc
 
         % TODO: save Result
         % TODO: this should be moved out into calling function 
-        Datafile = [char(strrep(Openfile,'.tif',[' rawVel ', num2str(WinStep), num2str(WinSize)])),'-New.mat'];
+        Datafile = strrep(Openfile{iFile},'.tif',[' rawVel ', num2str(WinStep), '-', num2str(WinSize), '-New.mat']);
         % TODO: make sure not missing any variables
-        save(Datafile,'Openfile','Result','WinSize','WinStep','msPerLine','umPerPx','MaxLines','UseAvg','left','right','method','optimizer');
+        save(Datafile,'Openfile','Result','WinSize','WinStep','msPerLine','umPerPx','MaxLines','UseAvg','left','right','transform','metric','optimizer','filtervar');
     end
 end

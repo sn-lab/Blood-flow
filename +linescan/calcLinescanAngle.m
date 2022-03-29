@@ -104,12 +104,13 @@ switch p.Results.Optimizer
         k = 15;
         [angle, fval] = optimizeAngleMultiStart(ObjectiveFun, Theta0, MinTheta, MaxTheta, ThetaTol, k);
     case 'binarysearch'
-        [angle, fval] = optimizeAngleLoop(ObjectiveFun,I, [MinTheta,MaxTheta], ThetaTol);
+        maxIter = 5000;
+        [angle, fval] = optimizeAngleLoop(ObjectiveFun, [MinTheta,MaxTheta], ThetaTol, maxIter);
     case 'exhaustive'
-        [angle, fval] = optimizeAngleExhaustive(ObjectiveFun,I, options);
+        [angle, fval] = optimizeAngleExhaustive(ObjectiveFun, options);
     case 'radonlegacy'
         options.Thetas = 'orig';    % Or 'simple'
-        [angle, fval] = optimizeAngleExhaustive(ObjectiveFun,I, options);
+        [angle, fval] = optimizeAngleExhaustive(ObjectiveFun, options);
     case 'svdlegacy'
         [angle, fval] = optimizeAngleSVDLegacy(ObjectiveFun, MinTheta, MaxTheta, ThetaTol, Steps);
     otherwise
@@ -131,9 +132,9 @@ fval = -fval;
 % Deal with "Rotate" Tranform which only requires angles (0,90) but needs a
 % check to see if output is vertical or horizontal
 if strcmp(p.Results.Transform, 'Rotate')
-    angle = -angle;
     % TODO: should bbox be same here?
     IRot = imrotate(I, angle, method, bbox);
+    angle = -angle;
     if isLinescanVertical(IRot) % Linescan has a negative slope
         angle = angle + 90;
     end
@@ -166,14 +167,13 @@ end
 % end
 
 
-% (SVD) Optimization Functions
 function [angle, MaxSep, exitflag] = optimizeAngleGlobalSearch(fun, Theta0, MinTheta, MaxTheta, ThetaTol, nTrialPts, nStage1pts)
     % TODO: these parameters can probably be tuned for faster and more robust optimization
     rng default % For reproducibility
 %     opts = optimoptions(@fmincon,'Algorithm','sqp');
     problem = createOptimProblem('fmincon','objective',...
     fun,'x0',Theta0,'lb',MinTheta,'ub',MaxTheta);
-    gs = GlobalSearch('XTolerance', ThetaTol, 'NumTrialPoints', nTrialPts, 'NumStageOnePoints', nStage1pts);
+    gs = GlobalSearch('XTolerance', ThetaTol, 'NumTrialPoints', nTrialPts, 'NumStageOnePoints', nStage1pts, 'Display', 'off');
     [angle,MinSep,exitflag,~] = run(gs,problem);
     % TODO: move this out?
     MaxSep = 1-MinSep;
@@ -184,7 +184,7 @@ function [angle, fval, exitflag] = optimizeAngleMultiStart(fun, Theta0, MinTheta
 %     opts = optimoptions(@fmincon,'Algorithm','sqp');
     problem = createOptimProblem('fmincon','objective',...
     fun,'x0',Theta0,'lb',MinTheta,'ub',MaxTheta);
-    ms = MultiStart('XTolerance', ThetaTol);
+    ms = MultiStart('XTolerance', ThetaTol, 'Display', 'off');
     [angle,fval,exitflag] = run(ms,problem, k);
 end
 
@@ -247,7 +247,9 @@ end % while loop for thetas
 end
 
 
-function [dXdt, fval] = optimizeAngleExhaustive(I, options)
+% TODO: modify this to allow thetaRange input for consistency with other
+% objective functions
+function [angle, fval] = optimizeAngleExhaustive(fun, options)
 % This function performs the radon transform on a precalculated list of
 % angles (approximately evenly spaced in velocity units), and only afer
 % picks the angle from that list that that produced the radon transform
@@ -264,7 +266,8 @@ function [dXdt, fval] = optimizeAngleExhaustive(I, options)
     
     
     % Initialize theta vector for radon transform
-    switch options.thetas
+    if ~isfield(options ,'Thetas'); options.Thetas = 'simple'; end
+    switch options.Thetas
         case 'orig'
             thetaHalf = radonAngles(181,4);
         case 'simple'
@@ -275,42 +278,29 @@ function [dXdt, fval] = optimizeAngleExhaustive(I, options)
     
     % NOTE: it is not critical for theta to be sorted... not worth running
     % the fliplr?
+    if ~isfield(options ,'I_sign'); options.I_sign = 0; end
     switch options.I_sign
         case -1
-            theta = 90-fliplr(thetaHalf);
+            thetas = 90-fliplr(thetaHalf);
         % TODO: should this be switched to NaN?
         case 0
-            theta = [90-fliplr(thetaHalf), 90+thetaHalf];
+            thetas = [90-fliplr(thetaHalf), 90+thetaHalf];
         case 1
-            theta = 90+thetaHalf;
+            thetas = 90+thetaHalf;
     end
     
     
-    % TODO: move this into separate "objective function"
-    % For radon transform, theta is angle from vertical?
-    [R, xp] = radon(I, theta);
-
-    % TODO: this assumes that there is some variance--but if the window is
-    % small and there aren't many (or any) clear stripes then that doesn't
-    % work. But then again maybe nothing will work in that case.
-    % Determine maximum variance along columns
-    Variance = var(R);
-    [fval,iTheta] = max(Variance);
-
+    
+    fvals = fun(thetas);
+    [fval,iTheta] = min(fvals);
+    angle = thetas(iTheta);
 
     %Debug mode
+    if ~isfield(options ,'Debug'); options.Debug = false; end
     if options.Debug
-        displayDebugger(R, theta, xp, Variance)
+        displayDebugger(R, thetas, xp, Variance)
     end
-    
-    % For cartesian convention. Should be in range (-90, 90)
-    thetaMax = theta(iTheta)-90;
-    % Slope is actually opposite tand(thetaMax) because tand provides slope
-    % in cartesian coordinates as opposed to image coordinates where Y-axis
-    % increases going down, rather than up.
-    dXdt = -tand(thetaMax);
 
-    
     
     % TODO: these should return angles prepared properly for radon
     % transform i.e. range (0, 180)
@@ -357,6 +347,7 @@ end
 % radon is evaluated for by doing some sort of optimization. This function
 % essentially uses a binary search to optimize theta.
 % TODO: tolerance should be in velocity units, not theta units....
+% function [theta, fval, flag] = optimizeAngleLoop(fun, thetaRange, thetaTol, maxIter)
 function [theta, fval] = optimizeAngleRecurse(I, thetaRange, velTol)
     % |----'----!----'----|
     % Check quarters (') of range to narrow down range to one half of
@@ -393,29 +384,24 @@ function [theta, fval] = optimizeAngleRecurse(I, thetaRange, velTol)
     end
 end
 
+
 % Same function as above but using a while loop instead of recursion
-function [theta, fval, flag] = optimizeAngleLoop(I, thetaRange, velTol)
+function [theta, fval, flag] = optimizeAngleLoop(fun, thetaRange, thetaTol, maxIter)
     % |----'----!----'----|
     % Check quarters (') of range to narrow down range to one half of
     % original, either [|, !], or [!, |]. If first quarter has a greater
     % variance than the third quarter, new range is [|, !], otherwise it is
     % [!, |].
     i = 1;
-    maxIter = 5000;
     iTol = Inf;
     % Loop until tolerance is less than requested, or maximum number of
     % iterations is exceeded.
-    while iTol > velTol && i <= maxIter
+    while iTol > thetaTol && i <= maxIter
         midTheta = mean(thetaRange);
         thetas = [mean([thetaRange(1), midTheta]), mean([midTheta, thetaRange(2)])];
-        [R, xp] = radon(I, thetas);
-
-        % TODO: this assumes that there is some variance--but if the window is
-        % small and there aren't many (or any) clear stripes then that doesn't
-        % work. But then again maybe nothing will work in that case.
-        %Determine maximum variance along columns
-        Variance=var(R);
-        [fval,n]=max(Variance);
+        
+        fvals = fun(thetas);
+        [fval,n] = min(fvals);
 
         % Determine newThetaRange, which is half of the original thetaRange
         theta = thetas(n);
@@ -427,7 +413,8 @@ function [theta, fval, flag] = optimizeAngleLoop(I, thetaRange, velTol)
 
         % Calculate difference in velocity for 
 %         iTol = min(tand(thetaRange)-tand(theta));
-        iTol = abs(diff(tand(thetaRange)));
+        iTol = abs(diff(thetaRange));
+%         iTol = abs(diff(tand(thetaRange)));
         % TODO: does this need to be if/else or just if?
         % TODO: this may be less readable than a while loop
         i = i+1;
@@ -472,11 +459,16 @@ function sep = separability(J)
     sep = S(1)^2/sum(S.^2);
 end
 
+
+% TODO: this assumes that there is some variance--but if the window is
+% small and there aren't many (or any) clear stripes then that doesn't
+% work. But then again maybe nothing will work in that case.
+%Determine maximum variance along columns
 % TODO: define this so peforms nanmean and nanvar across both dimensions,
 % checks which is greater (or less) and returns index-1 wheree 0/1 would
 % signify vertical/horizontal
 function vari = variability(J)
-    vari = -var(J);
+    vari = var(J);
 end
 
 %% Helper functions
@@ -485,6 +477,15 @@ function tf = isLinescanVertical(Rotdata)
     vertstd = std(mean(Rotdata,1));
     horzstd = std(mean(Rotdata, 2));
     tf = vertstd > horzstd; %lines are horizontal
+    
+% TODO: better way to check horizontal/vertical?
+%     % Check using SVD too
+%     [U,S,V] = svd(Rotdata);
+% %     tfSVD = mean(U,'all') > mean(V,'all');
+%     tfSVD = U(1)*S(1) > S(1)*V(1);
+%     if tfSVD ~= tf
+%         warning('Standard deviation and SVD giving different results for isLinescanVertical');
+%     end
 end
 
 function tf = validateTransform(metric)
