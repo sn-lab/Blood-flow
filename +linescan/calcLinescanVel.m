@@ -42,7 +42,6 @@ function Result = calcLinescanVel(varargin)
 % INPUTS
 p = inputParser();
 p.addRequired('I',@ismatrix);
-% TODO: these should probably be required
 p.addRequired('msPerLine',@(x) isnumeric(x)&&isscalar(x));
 p.addRequired('umPerPx',@(x) isnumeric(x)&&isscalar(x));
 % TODO: more strict validation functions
@@ -50,6 +49,7 @@ p.addOptional('WinSize',75,@(x) isnumeric(x)&&isscalar(x));
 p.addOptional('WinStep',50,@(x) isnumeric(x)&&isscalar(x));
 p.addOptional('errorcheck',false,@islogical);
 p.addParameter('Method','Radon',@(x) any(strcmp(x, {'Radon', 'SVD'})))
+p.addParameter('Optimizer','fminbnd',@(x) any(strcmp(x, {'fminbnd', 'legacy'})))
 % TODO: allow user to flip image for opposite velocity?
 % if I_sign==0
 %     I=fliplr(I);
@@ -92,27 +92,39 @@ errorcheck = p.Results.errorcheck;
     Result = zeros(nWins,6);
     
     % Create waitbar
-    hWait = waitbar(0);
+    % TODO: move this waitbar out to calcLinescanVelTiff?
+    hWait = waitbar(0, 'Calculating linescan velocity', 'Name', 'Linescan');
     
     % Pick function to calculate velocity
     switch p.Results.Method
         case 'Radon'
-            getLinescanVelFcn = @(block) linescan.method.calcLinescanVelRadon(block, Tfactor, Xfactor);
+%             calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelRadon(block, Tfactor, Xfactor);
+            calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelRadon(block, p.Results.Optimizer);
         case 'SVD'
-            getLinescanVelFcn = @(block) linescan.method.calcLinescanVelSVD(block, Tfactor, Xfactor);
+%             calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelSVD(block, Tfactor, Xfactor);
+            calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelSVD(block, p.Results.Optimizer);
     end
     
     for iWin = 1:1:nWins
         % TODO: use im2double instead?
         block = double(I(first(iWin):last(iWin), :));
 %         block = im2double(I(first(iWin):last(iWin), :));
-        veldata = getLinescanVelFcn(block);
-
-        veldata(1) = first(iWin);
-        veldata(2) = iWin*WinPixelsDown/Tfactor;
+        [dYdt, metric] = calcLinescanVelFcn(block);
+        
+        % TODO: change this to first, last? Or this is supposed to be time?
+        Result(iWin,1) = first(iWin);
+        Result(iWin,2) = iWin*WinPixelsDown/Tfactor;
+        % Velocity
+        Result(iWin,3) = dYdt*Xfactor*Tfactor;
+        Result(iWin,4) = metric;
+        
+        
+%         veldata = [0, 0, veldata, 0];
+%         veldata(1) = first(iWin);
+%         veldata(2) = iWin*WinPixelsDown/Tfactor;
     % ---------------------------------------------
         % For Debugging
-        if (errorcheck ==1) && (npoints< 20)
+        if errorcheck && npoints < 20
             subplot(2,1,1);imagesc(lines); f_niceplot;
             title(Openfile)
             subplot(2,1,2); imagesc(block); f_niceplot;title('block')
@@ -122,9 +134,9 @@ errorcheck = p.Results.errorcheck;
             pause;
         end
         % ---------------------------------------------
-        veldata(6) = -1*acot(veldata(3)/Xfactor/Tfactor);
+%         veldata(4) = -1*acot(veldata(3)/Xfactor/Tfactor);
 
-        Result(iWin, :) = veldata;
+%         Result(iWin, :) = veldata;
         
         waitbar(iWin/nWins, hWait);
     end

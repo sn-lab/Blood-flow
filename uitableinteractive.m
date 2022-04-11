@@ -1,43 +1,4 @@
-function T = buildLinescanConfig()
-    % TODO: allow output as CSV?
-
-    % TODO: make sure all output files are being saved in input directory;
-    % Get input folder and file
-    % TODO: allow multi-select
-
-    [fname,pname] = uigetfile('*.*','MultiSelect','on');
-    
-    
-    if iscell(fname)
-        nFiles = length(fname);
-    else
-        nFiles = 1;
-    end
-    
-    vars = repmat({pname,'',75,50,NaN,NaN,0,1024,'Radon',inf,false}, nFiles, 1);
-    vars{:,2} = fname;
-    vars = [vars;vars;vars;vars];
-    
-    T = cell2table(vars,'VariableNames',{'Folder','File','WinSize','WinStep','msPerLine','umPerPx','MaskLeft','MaskRight','Method','Maxlines','UseAvg'});
-    
-%     assignin('base', 'T', T);
-%     openvar('T')
-%     disp('Check settings and press any key to continue')
-%     pause
-%     for iFile = 1:1:nFiles
-%         % Mask linescan
-%         Openfile = fullfile(T.Folder{iFile}, T.File{iFile});
-%         [T.MaskLeft(iFile), T.MaskRight(iFile)] = linescan.maskLinescan(Openfile, 'Visual');
-%     end
-    
-    T = displaySettings(T);
-    
-end
-
-
-function T = displaySettings(T)
-    % Create table array
-
+function T = uitableinteractive(T)
     % Create UI figure
     hUIFig = uifigure('Units','normalized','Position',[0.25, 0.25, 0.5, 0.5]);
 
@@ -49,13 +10,13 @@ function T = displaySettings(T)
     hUITable.KeyPressFcn = @UITableKeyPressFcn;
     uiwait(hUIFig);
 
-    function updateData(~,~)
-        T = hUITable.DisplayData;
+    function updateData(src,~)
+        T = src.DisplayData;
     end
     
 
     function UITableKeyPressFcn(src,evt)
-%         data = get(handles.uitable1,'Data');
+        % TODO: do this with a switch-case?
         if length(evt.Modifier) == 1 && strcmp(evt.Modifier, 'control') && strcmp(evt.Key, 'v')
             pasteTableData(src)
         elseif length(evt.Modifier) == 1 && strcmp(evt.Modifier, 'control') && strcmp(evt.Key, 'c')
@@ -64,14 +25,12 @@ function T = displaySettings(T)
     end
     
     function pasteTableData(src)
-        % TODO: move this conent to separate function for better
-        % organization?
+        % TODO: what about pasting a scalar value into multiple selected
+        % cells?
+        % TODO: allow user to paste in more rows?
+        
         data = src.DisplayData;
         str = clipboard('paste');
-        % TODO: maybe could combine more of the if/else clauses
-        % Should this go row-by-row, column-by-column or cell by cell?
-        % Column-by-column seems to make most sense because datatype is
-        % consistent
 
         % Parse clipboard string
         str = strtrim(str);
@@ -98,32 +57,37 @@ function T = displaySettings(T)
         fromCols = fromColStart:fromColEnd;
 
         for i = 1:1:length(toCols)
-            switch class(data{:,toCols(i)})
+            % TODO: need to handle other data classes?
+            % Need to access in this way to get true type, otherwise will
+            % return as cell
+            % TODO: maybe return everything as a acell array and then index
+            % the cell array to get the class...
+            % dataCol = data.(data.Properties.VariableNames{i});
+            dataCol = data{:,i};
+            if iscell(dataCol); dataCol = dataCol{:}; end
+            switch class(dataCol)
+                case 'char'
+                    % TODO: really this should use curly braces
+                    data{toRows,toCols(i)} = cellstr(fromRows,fromCols(i));
                 case 'cell'
                     data(toRows,toCols(i)) = cellstr(fromRows,fromCols(i));
                 case 'double'
                     data{toRows,toCols(i)} = str2double(cellstr(fromRows,fromCols(i)));
                 case 'logical'
                     data{toRows,toCols(i)} = cellfun(@(x) strcmpi(x,'true'), cellstr(fromRows,fromCols(i)));
+                case 'categorical'
+                    data{toRows,toCols(i)} = {categorical(cellstr(fromRows,fromCols(i)),categories(dataCol))};
                 otherwise
-                    error(['Cannot paste data into column ', num2str(col),...
-                           'due to unsupported type: ', class(data{:,col})])
+                    error(['Cannot paste data into column ', num2str(i),...
+                           'due to unsupported type: ', class(dataCol)])
             end
         end
+        % TODO: why setting src.Data rather than src.DisplayData?
         src.Data = data;
+        updateData(src)
     end
 
     function copyTableData(src)
-        % Add newlines
-        % Run cellfun to add tabs?
-        % Probably need for-loop from min(row) to max(row) and min(col) to
-        % max(col) in order to add apropriate number of tabs etc. for
-        % non-rectangular selections
-        % TODO: force rectangular selections??
-        % TODO: maybe faster to take rectangular selection and then replace
-        % non-selected cells with empty strings, then concatenate
-        % everything with tabs etc
-        % First, concatenate rows together to make vector, then do rows
         cellstr = table2cell(src.DisplayData);
         cellstr = string(cellstr);
         
@@ -147,11 +111,10 @@ function T = displaySettings(T)
             rowStr = sprintf('%s\t',cellstr(iRow,:));
             str = sprintf('%s%s\n',str, rowStr(1:end-1));
         end
-        % TODO: is this necessary?
+        % TODO: is it necessary to strip trailing newline?
         str = str(1:end-1);
         
-        % Now take subset of min to max
-        
+        % Set computer clipboard
         clipboard('copy', str);
     end
 

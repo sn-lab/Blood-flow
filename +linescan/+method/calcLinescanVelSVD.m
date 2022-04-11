@@ -1,4 +1,4 @@
-function Result = calcLinescanVelSVD(varargin)
+function [dYdt, MaxSep] = calcLinescanVelSVD(varargin)
 % function Result = f_find_vel(small, (Tfactor), (Xfactor), (slope), (useaverage), (debug))
 % based on RotMatOpt19_rand_time
 % IN: small = 1 frame
@@ -24,14 +24,14 @@ function Result = calcLinescanVelSVD(varargin)
 p = inputParser();
 p.addRequired('small')
 % TODO: these probably should be addRequired (not guessed)
-p.addOptional('Tfactor', 1, @(x) isnumeric(x)&&isscalar(x)); % microns/pixel
-p.addOptional('Xfactor', 205/500*250/512, @(x) isnumeric(x)&&isscalar(x)); % microns/pixel
-p.addOptional('Optimizer', @ischar); % microns/pixel
+% p.addOptional('Tfactor', 1, @(x) isnumeric(x)&&isscalar(x)); % microns/pixel
+% p.addOptional('Xfactor', 205/500*250/512, @(x) isnumeric(x)&&isscalar(x)); % microns/pixel
+p.addOptional('Optimizer', 'fminbnd', @ischar); % microns/pixel
 p.parse(varargin{:});
 
 small = p.Results.small;
-Xfactor = p.Results.Xfactor;
-Tfactor = p.Results.Tfactor;
+% Xfactor = p.Results.Xfactor;
+% Tfactor = p.Results.Tfactor;
 
 block = small;
 
@@ -48,20 +48,20 @@ if oldY > oldX
     
     [Xs, Ys] = meshgrid(1:step:oldX, 1:newY);
     small = interp2(oldXs, oldYs, block, Xs, Ys);
-    TfactorUse = Tfactor;
-    XfactorUse = Xfactor/newX*oldX;
+%     TfactorUse = Tfactor;
+%     XfactorUse = Xfactor/newX*oldX;
 elseif oldY < oldX
     newX = oldX; newY = oldX;
     step = (oldY - 1)/(newY-1);
     
     [Xs, Ys] = meshgrid(1:newY, 1:step:oldY);
     small = interp2(oldXs, oldYs, block, Xs, Ys);
-    TfactorUse = Tfactor*newY/oldY;
-    XfactorUse = Xfactor;
+%     TfactorUse = Tfactor*newY/oldY;
+%     XfactorUse = Xfactor;
     
 else
-    TfactorUse = Tfactor;
-    XfactorUse = Xfactor;
+%     TfactorUse = Tfactor;
+%     XfactorUse = Xfactor;
 end % resize block
 
 
@@ -88,10 +88,10 @@ switch p.Results.Optimizer
     case 'fminbnd'
         % TODO: should this just be -RotateFindSVD?? Why 1??
         fun = @(Theta) 1-(RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method));
-        [angle, MaxSep] = optimizeWithToolbox(fun, MinTheta, MaxTheta, SepTol, Steps);
+        [angle, MaxSep] = optimizeSVDAngleFminbnd(fun, MinTheta, MaxTheta, SepTol, Steps);
     case 'legacy'
         fun = @(Theta) RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method);
-        [angle, MaxSep] = optimizeWithoutToolbox(fun, MinTheta, MaxTheta, SepTol, Steps);
+        [angle, MaxSep] = optimizeSVDAngleLegacy(fun, MinTheta, MaxTheta, SepTol, Steps);
 end
 
 
@@ -99,14 +99,23 @@ end
 Rotdata = Rotate(XRAMP, YRAMP, X, Y, small, angle, method);
 
 % Calculate velocity using angle and direction
-if isLinescanHorizontal(Rotdata)
-    vel = 1*TfactorUse*XfactorUse*abs(cot(angle));
-    angletrue =  acot(cot(angle)*TfactorUse*XfactorUse);
-else % lines are vertical
-    vel = -1*TfactorUse*XfactorUse*abs(tan(angle));
-    angletrue =  -acot(cot(angle)*TfactorUse*XfactorUse);
-end
+% TODO: why isn't this using tan for both?
+% TODO: can at least shrink this down to just if clause for flipping signs
+% TODO: what's the difference betwen vel and angletrue?
+dYdt = atand(angle);
 
+if isLinescanHorizontal(Rotdata)
+%     vel = 1*TfactorUse*XfactorUse*abs(cot(angle));
+%     angletrue =  acot(cot(angle)*TfactorUse*XfactorUse);
+    vel = abs(cot(angle));
+    angletrue =  acot(cot(angle));
+else % lines are vertical
+%     vel = -1*TfactorUse*XfactorUse*abs(tan(angle));
+%     angletrue =  -acot(cot(angle)*TfactorUse*XfactorUse);
+    vel = -abs(tan(angle));
+    angletrue =  -acot(cot(angle));
+end
+end
 % TODO: what is this number?: (Nframes-1)*Period + 1/1000/TfactorUse*(WinNumber-1)*WinPixelsDown
 % Result = [Nframes,WinTop, vel, MaxSep, angletrue, Flux,(Nframes-1)*Period + 1/1000/TfactorUse*(WinNumber-1)*WinPixelsDown, WinNumber, Flux2, Flux3];
 % Left over variables from origianal program are set = 0
@@ -114,12 +123,15 @@ end
 % Flux = NaN; Flux2 = NaN; Flux3 = NaN;
 
 % TODO: necessary to return Nframes and WinTop?
-Nframes = 0;
-WinTop = 0;
-Result = [Nframes, WinTop, vel, angletrue, MaxSep];
+% Nframes = 0;
+% WinTop = 0;
+% Result = [Nframes, WinTop, vel, angletrue, MaxSep];
 
+% TODO: should vel be renamed dYdt?
+% Result = [vel, angletrue, MaxSep];
 
-function [angle, MaxSep] = optimizeWithToolbox(fun, MinTheta, MaxTheta, SepTol, Steps)
+%% Optimization Functions
+function [angle, MaxSep] = optimizeSVDAngleFminbnd(fun, MinTheta, MaxTheta, SepTol, Steps)
 %     fun = @(Theta) 1-(RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method));
     % TODO: set MaxFunEvals and MaxIter?
     % TODO: change the standard here in optimizeWithoutToolbox
@@ -132,10 +144,34 @@ function [angle, MaxSep] = optimizeWithToolbox(fun, MinTheta, MaxTheta, SepTol, 
 %         angle = NaN; %OR 50?
 %         MaxSep = NaN; %OR 0?
 %     end
-        
-    
-function [MaxTheta, MaxSep] = optimizeWithoutToolbox(fun, MinTheta, MaxTheta, SepTol, Steps)
+end
+% TODO: change this to use fminsearch on velocity like below?
+% function [vel, Y, flag] = optimizeRadonAngleFminsearch(I, velTol)
+%     fun = @(vel) -VelAngleRadonVar(I, vel);
+%     options = optimset('MaxIter', 5000, 'TolX', velTol);
+% %     [theta,Y,flag,output] = fminbnd(fun, thetaRange(1), thetaRange(2), options);
+%     [vel,Y,flag,output] = fminsearch(fun, 0, options);
+%     Y = -Y;
+%     
+%     
+%     % TODO: move this inside fminsearch function for better organization?
+%     function Y = VelAngleRadonVar(I, vel)
+%         % Calculate angle from requested velocity, with wrapping
+%         theta = atand(vel);
+%         if vel < 0
+%             theta = theta+180;
+%         end
+% 
+%         R = radon(I, theta);
+%         Y = var(R);
+%     end
+% end
+
+
+% TODO: rename this to legacy
+function [MaxTheta, MaxSep, flag] = optimizeSVDAngleLegacy(fun, MinTheta, MaxTheta, SepTol, Steps)
 FoundMax = 0;
+flag = false;
 
 loops = 1;
 OldSep = 0;
@@ -173,6 +209,7 @@ while (not(FoundMax))
             MaxTheta = Angles(Index-1);
         end
 else % found a good rotation
+    flag = true;
         if abs(MaxSep - OldSep)<SepTol
             FoundMax = 1; %set flag for exiting loop for window
         else % new angle range
@@ -190,8 +227,9 @@ else % found a good rotation
         FoundMax = 1;
     end
 end % while loop for thetas
+end
         
-
+%% Helper functions
 function tf = isLinescanHorizontal(Rotdata)
     % check orientation of rotated matrix
     vertavg = mean(Rotdata,1);
@@ -199,7 +237,7 @@ function tf = isLinescanHorizontal(Rotdata)
     vertstd = std(vertavg);
     horzstd = std(horzavg);
     tf = horzstd> vertstd; %lines are horizontal
-    
+end
 % ------------------------------------------------------
 function [seperability, Rotdata] = RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,method)
 %RotateFindSVD - rotates the center square matrix of small, returns seperability
@@ -207,13 +245,14 @@ function [seperability, Rotdata] = RotateFindSVD(XRAMP, YRAMP, X, Y,small,Theta,
     Rotdata = Rotate(XRAMP, YRAMP, X, Y,small,Theta,method);
     S = svd(Rotdata);
     seperability = S(1)^2/sum(S.^2);
+end
 
 function Rotdata = Rotate(XRAMP, YRAMP, X, Y,small,Theta,method)
     warpx = X*cos(Theta) +Y*sin(Theta) ;
     warpy = (-X*sin(Theta)+ Y*cos(Theta)) ;
     Rotdata = interp2(XRAMP, YRAMP, small, warpx, warpy, method);
     Rotdata(isnan(Rotdata))= mean(Rotdata(~isnan(Rotdata)));
-
+end
 
 
 
