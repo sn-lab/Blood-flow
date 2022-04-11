@@ -1,4 +1,21 @@
 # Blood-flow
+
+## Linescans
+
+### Transform
+| Radon            | fminbnd | svdlegacy | binarysearch | exhaustive | radonlegacy | globalsearch | multistart |
+| :----:           | :----:  | :----:    | :----:       | :----:     | :----:      | :----:       | :----:     |
+| **Variability**  |        |         |            |           |           |            |           |
+| **Separability** |        |         |            |           |           |            |           |
+
+| Rotate           | fminbnd | svdlegacy | binarysearch | exhaustive | radonlegacy | globalsearch | multistart |
+| :----:           | :----:  | :----:    | :----:       | :----:     | :----:      | :----:       | :----:     |
+| **Variability**  |        |         |            |           |           |           |           |
+| **Separability** |        |         |            |           |           |            |           |
+
+❌⛔️
+✅
+
 This repository contains the most up-to-date version of the linescan code used for measuring blood flow from linescans
 
 ### In here you will find:

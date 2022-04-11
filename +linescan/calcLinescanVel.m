@@ -23,6 +23,8 @@ function Result = calcLinescanVel(varargin)
 %   10) blank
 %
 % Please reference the following publications:
+% [ADD NEW PUBLICATION HERE]
+% 
 % C. B. Schaffer, B. Friedman, N. Nishimura, L. F. Schroeder, P. S. Tsai,
 % F. F. Ebner, P. D. Lyden, and D. Kleinfeld, 
 % Two-photon imaging of cortical surface microvessels reveals 
@@ -35,11 +37,11 @@ function Result = calcLinescanVel(varargin)
 % 15746 (1998). 
 %
 % Questions, bugs, etc. please contact:
-% Nozomi Nishimura
-% nn62@cornell.edu
-% last mod 02-07-09
+% Nash Allan-Rahill
+% na428@cornell.edu
+% last modified Feb 23, 2021
 
-% INPUTS
+% Parse and validate inputs
 p = inputParser();
 p.addRequired('I',@ismatrix);
 p.addRequired('msPerLine',@(x) isnumeric(x)&&isscalar(x));
@@ -48,13 +50,11 @@ p.addRequired('umPerPx',@(x) isnumeric(x)&&isscalar(x));
 p.addOptional('WinSize',75,@(x) isnumeric(x)&&isscalar(x));
 p.addOptional('WinStep',50,@(x) isnumeric(x)&&isscalar(x));
 p.addOptional('errorcheck',false,@islogical);
-p.addParameter('Method','Radon',@(x) any(strcmp(x, {'Radon', 'SVD'})))
-p.addParameter('Optimizer','fminbnd',@(x) any(strcmp(x, {'fminbnd', 'legacy'})))
-% TODO: allow user to flip image for opposite velocity?
-% if I_sign==0
-%     I=fliplr(I);
-% end
-
+% TODO: add validiation function? @(x) any(strcmp(x, {'fminsearch', 'legacy'})))
+p.addParameter('Transform','Radon',@(x) any(strcmp(x, {'Radon', 'Rotate'})));
+p.addParameter('Metric','Var',@(x) any(strcmp(x, {'Sep', 'Var'})));
+p.addParameter('Optimizer','globalsearch');
+p.addParameter('FilterVar', 0, @isfinite);
 p.parse(varargin{:});
 
 % TODO: Probably don't need to reassign most of these
@@ -64,24 +64,42 @@ Xfactor = p.Results.umPerPx; % microns per xpixel
 WinSize = p.Results.WinSize;
 WinPixelsDown = p.Results.WinStep;
 errorcheck = p.Results.errorcheck;
+a = p.Results.FilterVar;
+% TODO: allow user to flip image for opposite velocity?
+% if I_sign==0
+%     I=fliplr(I);
+% end
 
-%    % actual data used is only center circle ~70% of area (square window)
-%  % number of pixels between top of last window and next window
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% calculate velocities or diameters
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\
-
-    
 % TODO: should use this default name or ask user?
     %Datafile = [char(strrep(OpenName(i),'.tif',['--wpd', num2str(WinPixelsDown)])), date, '.mat'];
-
-   
+% TODO: consider making this the default for all radon methods
+% Force filtering at a = 25 for legacy Radon
+if strcmp(p.Results.Transform, 'Radon') && strcmp(p.Results.Optimizer, 'radonlegacy')
+    a = 25;
+end
     
-    
 
-    % Loop through lines
+
+%% Filter Image (if requested)
+% TODO: move this into subfunction?
+% This filtering step seems to be very important for radon method in
+% general
+% TODO: should image be cast to double first?
+if a
+    %Create high pass flter using isotropic Gaussian
+    I_size = size(I);
+    y = (1:I_size(1))';
+    x = 1:I_size(2);
+    gaus = 1 - exp(-.5 * ( ((y-0.5*I_size(1)).^2 / a) + ((x-0.5*I_size(2)).^2 / a) ) );
+
+    %Multiply frequency components of image by Gaussian filter
+    I = fftshift(fft2(I));
+    I = I.*gaus;
+    I = ifft2(ifftshift(I));
+    I = real(I);
+end
+
+%% Loop through lines
     
     % Calculate block indices
     last = WinSize:WinPixelsDown:size(I,1);
@@ -95,27 +113,39 @@ errorcheck = p.Results.errorcheck;
     % TODO: move this waitbar out to calcLinescanVelTiff?
     hWait = waitbar(0, 'Calculating linescan velocity', 'Name', 'Linescan');
     
-    % Pick function to calculate velocity
-    switch p.Results.Method
-        case 'Radon'
-%             calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelRadon(block, Tfactor, Xfactor);
-            calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelRadon(block, p.Results.Optimizer);
-        case 'SVD'
-%             calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelSVD(block, Tfactor, Xfactor);
-            calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelSVD(block, p.Results.Optimizer);
-    end
+    
+    % Function handle for calculating linescan slope
+    calcLinescanAngleFcn = @(block) linescan.calcLinescanAngle(...
+        block,'Transform',p.Results.Transform, 'Metric', p.Results.Metric,...
+        'Optimizer', p.Results.Optimizer);
+
+%     % Pick function to calculate velocity
+%     switch p.Results.Method
+%         case 'Radon'
+% %             calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelRadon(block, Tfactor, Xfactor);
+%             calcLinescanSlopeFcn = @(block) linescan.method.calcLinescanSlopeRadon(block, p.Results.Optimizer);
+%         case 'SVD'
+% %             calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelSVD(block, Tfactor, Xfactor);
+%             calcLinescanSlopeFcn = @(block) linescan.method.calcLinescanSlopeSVD(block, p.Results.Optimizer);
+%     end
     
     for iWin = 1:1:nWins
         % TODO: use im2double instead?
         block = double(I(first(iWin):last(iWin), :));
 %         block = im2double(I(first(iWin):last(iWin), :));
-        [dYdt, metric] = calcLinescanVelFcn(block);
+        [angle, metric] = calcLinescanAngleFcn(block);
         
+        % Slope is actually opposite tand(thetaMax) because tand provides slope
+        % in cartesian coordinates as opposed to image coordinates where Y-axis
+        % increases going down, rather than up.
+        dXdt = -1/tand(angle);
+
         % TODO: change this to first, last? Or this is supposed to be time?
         Result(iWin,1) = first(iWin);
+        % TODO: should time be average time or start time of block?
         Result(iWin,2) = iWin*WinPixelsDown/Tfactor;
         % Velocity
-        Result(iWin,3) = dYdt*Xfactor*Tfactor;
+        Result(iWin,3) = dXdt*Xfactor*Tfactor;
         Result(iWin,4) = metric;
         
         
@@ -146,7 +176,7 @@ errorcheck = p.Results.errorcheck;
 %     clear data data1 cropped Result Rotdata time Data;
 
     close(hWait);
-
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -154,11 +184,9 @@ errorcheck = p.Results.errorcheck;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [] = f_niceplot
 
-axis image; colormap gray;
-set(gca, 'XTickLabel', [])
-set(gca, 'YTickLabel', [])
-
-
-
+function f_niceplot
+    axis image; colormap gray;
+    set(gca, 'XTickLabel', [])
+    set(gca, 'YTickLabel', [])
+end
