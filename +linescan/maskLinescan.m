@@ -5,6 +5,8 @@ function [WinLeft, WinRight] = maskLinescan(Openfile, method)
         case 'Auto'
             [WinLeft, WinRight] = maskLinescanAuto(I);
             error('Not supported');
+        otherwise
+            error('Unrecognized method');
     end
 end
 
@@ -43,11 +45,15 @@ function [WinLeft, WinRight] = maskLinescanVisual(Openfile)
     framenumber = 1;
 
     % TODO: deal with 2D/3D?
-    imshow(imread(Openfile, 1), []);
-%     title({fname;['frame:', num2str(framenumber)]});
+    % TODO: this is a very slow way to do this
+    maxframes = length(imfinfo(Openfile));
+    Iframe = imread(Openfile, framenumber);
+    Iframe = imadjust(Iframe, stretchlim(Iframe, 0));
+    I = imshow(Iframe);
 
-    % get coordinates of rrbox
-    xlabel('Select region of interest');
+    % Title with frame number
+    title({Openfile;['frame: ', num2str(framenumber)]}, 'Interpreter', 'none');
+    drawnow;
 
     f.KeyPressFcn = @keyPressed;
 
@@ -58,56 +64,32 @@ function [WinLeft, WinRight] = maskLinescanVisual(Openfile)
     WinLeft = round(r.Position(1));
     WinRight = round(r.Position(1) + r.Position(3));
 
-    % DO this is 
     close (f);
-end
 
 % TODO: just set the CData for new frames;
-function keyPressed(src, evt)
+function keyPressed(~, evt)
     if isempty(evt.Modifier)
         switch evt.Key
             case 'space' % space for keep this box
                 uiresume;
             case 'f' % forward 1 frame
-                if framenumber < maxframes
-                    framenumber = framenumber +1;
-                    showlines = imread(Openfile, framenumber);
-                else
-                    beep;
-                    disp('no more frames')
-                end
-                
-                imagesc(showlines); f_niceplot;
-                title({fname;['frame:', num2str(framenumber)]});
-
+                framenumber = min(framenumber + 1, maxframes);
+                updateFrame();
             case 'b' % back 1 frame
-                if framenumber > 1
-                    framenumber = framenumber - 1;
-                    showlines = imread(Openfile, framenumber);
-                else
-                    beep;
-
-                end
-
-                imagesc(showlines); f_niceplot;
-                title({fname;['frame:', num2str(framenumber)]});
-
+                framenumber = max(framenumber - 1, 1);
+                updateFrame()
             case 's' % skip 10 frames forward
-                if framenumber + 10 <= maxframes
-                    framenumber = framenumber + 10;
-                    showlines = imread(Openfile, framenumber);
-                else
-                    beep;
-                end
-
-                imagesc(showlines); f_niceplot;
-                title({fname;['frame:', num2str(framenumber)]});
-
-            case 'n'
-                clf;
-                imagesc(showlines); f_niceplot;
-                title({fname;['frame:', num2str(framenumber)]});
+                framenumber = min(framenumber + 10, maxframes);
+                updateFrame()
         end
     end
 end
 
+    function updateFrame()
+        Iframe = imread(Openfile, framenumber);
+        Iframe = imadjust(Iframe, stretchlim(Iframe, 0));
+        I.CData = Iframe;
+        title({Openfile;['frame: ', num2str(framenumber)]}, 'Interpreter', 'none');
+        drawnow;
+    end
+end

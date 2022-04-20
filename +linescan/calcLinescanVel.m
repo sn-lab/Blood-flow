@@ -1,26 +1,6 @@
 function Result = calcLinescanVel(varargin)
-% Process linescan files and calculate velocity
-% Data file should be in greyscale, '.tif' format. This program assumes the data
-% is stored as sequential images and that there is no gap in time between
-% the last line of a frame and the first line of the next frame. 
-% Part 1 allows user to choose parameters and a region of interest for each line
-% scan file. 
-% Saves filenames and parameters in a "bfdata.mat" file and also a ".csv" file that can
-% be opened in Excel or a text program. 
-% Part 2 uses parameters and filenames saved in "bfdata.mat" file to
-% then calculate velocites in each file.
-% OUTPUT: variable called 'Result' is saved in separate files for each .tif file       
-%   1) line number 
-%   2) time (ms)
-%   3) Velocity (mm/s), positive veloctiy indicates RBCs going from left to
-%   right
-%   4) Sep (Seperability)
-%   5) Angle (angle of stripes in radians)
-%   6) blank
-%   7) blank
-%   8) blank
-%   9) blank
-%   10) blank
+% calcLinescanVel Calculate velocity from linescan kymograph
+%   Detailed explanation goes here
 %
 % Please reference the following publications:
 % [ADD NEW PUBLICATION HERE]
@@ -41,7 +21,8 @@ function Result = calcLinescanVel(varargin)
 % na428@cornell.edu
 % last modified Feb 23, 2021
 
-% Parse and validate inputs
+
+%% Parse and validate inputs
 p = inputParser();
 p.addRequired('I',@ismatrix);
 p.addRequired('msPerLine',@(x) isnumeric(x)&&isscalar(x));
@@ -49,7 +30,6 @@ p.addRequired('umPerPx',@(x) isnumeric(x)&&isscalar(x));
 % TODO: more strict validation functions
 p.addOptional('WinSize',75,@(x) isnumeric(x)&&isscalar(x));
 p.addOptional('WinStep',50,@(x) isnumeric(x)&&isscalar(x));
-p.addOptional('errorcheck',false,@islogical);
 % TODO: add validiation function? @(x) any(strcmp(x, {'fminsearch', 'legacy'})))
 p.addParameter('Transform','Radon',@(x) any(strcmp(x, {'Radon', 'Rotate'})));
 p.addParameter('Metric','Var',@(x) any(strcmp(x, {'Sep', 'Var'})));
@@ -63,23 +43,13 @@ Tfactor = 1/p.Results.msPerLine; % ypixel per ms
 Xfactor = p.Results.umPerPx; % microns per xpixel
 WinSize = p.Results.WinSize;
 WinPixelsDown = p.Results.WinStep;
-errorcheck = p.Results.errorcheck;
 a = p.Results.FilterVar;
-% TODO: allow user to flip image for opposite velocity?
-% if I_sign==0
-%     I=fliplr(I);
-% end
 
-% TODO: should use this default name or ask user?
-    %Datafile = [char(strrep(OpenName(i),'.tif',['--wpd', num2str(WinPixelsDown)])), date, '.mat'];
-% TODO: consider making this the default for all radon methods
 % Force filtering at a = 25 for legacy Radon
 if strcmp(p.Results.Transform, 'Radon') && strcmp(p.Results.Optimizer, 'radonlegacy')
     a = 25;
 end
     
-
-
 %% Filter Image (if requested)
 % TODO: move this into subfunction?
 % This filtering step seems to be very important for radon method in
@@ -100,35 +70,28 @@ if a
 end
 
 %% Loop through lines
-    
+% TODO: could be more efficient about using the table to hold these
+% variables so not duplicating/calculating every loop
     % Calculate block indices
     last = WinSize:WinPixelsDown:size(I,1);
     first = last - WinSize + 1;
     nWins = length(first);
 
     % Initialize outputs
-    Result = zeros(nWins,6);
+    Result = table('Size',[nWins,6],'VariableTypes',{'double','double','duration','duration','double','double'},...
+        'VariableNames', {'StartLine','EndLine','StartTime','EndTime','Velocity(mm/s)','Metric'});
     
     % Create waitbar
-    % TODO: move this waitbar out to calcLinescanVelTiff?
+    % TODO: move this waitbar out to calcLinescanVelTiff?--Create input
+    % DisplayWaitbar argument?
     hWait = waitbar(0, 'Calculating linescan velocity', 'Name', 'Linescan');
-    
     
     % Function handle for calculating linescan slope
     calcLinescanAngleFcn = @(block) linescan.calcLinescanAngle(...
         block,'Transform',p.Results.Transform, 'Metric', p.Results.Metric,...
         'Optimizer', p.Results.Optimizer);
-
-%     % Pick function to calculate velocity
-%     switch p.Results.Method
-%         case 'Radon'
-% %             calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelRadon(block, Tfactor, Xfactor);
-%             calcLinescanSlopeFcn = @(block) linescan.method.calcLinescanSlopeRadon(block, p.Results.Optimizer);
-%         case 'SVD'
-% %             calcLinescanVelFcn = @(block) linescan.method.calcLinescanVelSVD(block, Tfactor, Xfactor);
-%             calcLinescanSlopeFcn = @(block) linescan.method.calcLinescanSlopeSVD(block, p.Results.Optimizer);
-%     end
     
+    % Loop over windows
     for iWin = 1:1:nWins
         % TODO: use im2double instead?
         block = double(I(first(iWin):last(iWin), :));
@@ -141,52 +104,34 @@ end
         dXdt = -1/tand(angle);
 
         % TODO: change this to first, last? Or this is supposed to be time?
-        Result(iWin,1) = first(iWin);
+        Result.StartLine(iWin) = first(iWin);
+        Result.EndLine(iWin) = last(iWin);
         % TODO: should time be average time or start time of block?
-        Result(iWin,2) = iWin*WinPixelsDown/Tfactor;
-        % Velocity
-        Result(iWin,3) = dXdt*Xfactor*Tfactor;
-        Result(iWin,4) = metric;
+        Result.StartTime(iWin) = milliseconds((first(iWin)-1)/Tfactor);
+        Result.EndTime(iWin) = milliseconds((last(iWin)-1)/Tfactor);
+        % Calculate velocity from slope
+        Result.Velocity(iWin) = dXdt*Xfactor*Tfactor;
+        Result.Metric(iWin) = metric;
         
-        
-%         veldata = [0, 0, veldata, 0];
-%         veldata(1) = first(iWin);
-%         veldata(2) = iWin*WinPixelsDown/Tfactor;
-    % ---------------------------------------------
-        % For Debugging
-        if errorcheck && npoints < 20
-            subplot(2,1,1);imagesc(lines); f_niceplot;
-            title(Openfile)
-            subplot(2,1,2); imagesc(block); f_niceplot;title('block')
-            angle = acot(veldata(3)/Xfactor/Tfactor)*180/pi;
-            title([num2str(veldata(1)), ' vel:', num2str(veldata(3)), ' angle: ', num2str(angle)]);
-            xlabel('press a key to continue');
-            pause;
-        end
-        % ---------------------------------------------
-%         veldata(4) = -1*acot(veldata(3)/Xfactor/Tfactor);
-
-%         Result(iWin, :) = veldata;
-        
+        % Update waitbar
         waitbar(iWin/nWins, hWait);
     end
 
+    % Update waitbar and close
     waitbar(1, hWait, 'Done!')
-    
-%     clear data data1 cropped Result Rotdata time Data;
-
     close(hWait);
 end
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% functions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-function f_niceplot
-    axis image; colormap gray;
-    set(gca, 'XTickLabel', [])
-    set(gca, 'YTickLabel', [])
-end
+% function I = isoGaussFilt(I, a)
+%     %Create high pass flter using isotropic Gaussian
+%     I_size = size(I);
+%     y = (1:I_size(1))';
+%     x = 1:I_size(2);
+%     gaus = 1 - exp(-.5 * ( ((y-0.5*I_size(1)).^2 / a) + ((x-0.5*I_size(2)).^2 / a) ) );
+% 
+%     %Multiply frequency components of image by Gaussian filter
+%     I = fftshift(fft2(I));
+%     I = I.*gaus;
+%     I = ifft2(ifftshift(I));
+%     I = real(I);
+% end

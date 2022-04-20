@@ -9,7 +9,7 @@ function Result = calcLinescanVelTiff(varargin)
     p.addParameter('Mask','Visual',@(x) ischar(x)||isvector(x))
     p.addParameter('Transform','Radon',@ischar);
     p.addParameter('Metric','Var',@ischar);
-    p.addParameter('Optimizer','globalsearch',@ischar);
+    p.addParameter('Optimizer','radonlegacy',@ischar);
     p.addParameter('MaxLines',inf);
     p.addParameter('UseAvg',false,@islogical);
     p.addParameter('FilterVar',25,@isreal);
@@ -134,7 +134,8 @@ function Result = calcLinescanVelTiff(varargin)
     % entire image??
     % Before this was happening block-by-block which seems a bit sus
     % Maybe should move out depening on which
-    for iFile = 1:1:length(Openfile)
+    for iFile = 1:1:size(T,1)
+        filepath = T.filepath{iFile};
         MaxLines = T.MaxLines(iFile);
         UseAvg = T.UseAvg(iFile);
         % TODO: should these be rounded here?
@@ -151,7 +152,7 @@ function Result = calcLinescanVelTiff(varargin)
         filtervar = T.FilterVar(iFile);
         
         % Read full image stack and reshape to 2D
-        hTiffReader = util.io.readTiffStack(Openfile{iFile});
+        hTiffReader = util.io.readTiffStack(filepath);
         I = permute(hTiffReader.data(), [2,1,3]);
         delete(hTiffReader);
 
@@ -159,7 +160,8 @@ function Result = calcLinescanVelTiff(varargin)
         I = permute(I, [1,3,2]);
         I = reshape(I, [], nPix);
         nLines = size(I, 1);
-
+        
+        % TODO: validate this earlier?
         MaxLines = min(MaxLines, nLines);
 
         % Get rid of vertical stripes?
@@ -171,16 +173,23 @@ function Result = calcLinescanVelTiff(varargin)
         % TODO: need to round here? Should masklinescan return rounded
         % value?
         I = I(1:MaxLines, left:right);
-
+        
+        % Run on GPU
+        I = gpuArray(I);
+        
         % Run Linescan
     %     tic
-        Result = linescan.calcLinescanVel(I, msPerLine, umPerPx, WinSize, WinStep, errorcheck, 'Transform', transform, 'Metric', metric, 'Optimizer', optimizer, 'FilterVar',filtervar);
+        Result = linescan.calcLinescanVel(I, msPerLine, umPerPx, WinSize, WinStep, 'Transform', transform, 'Metric', metric, 'Optimizer', optimizer, 'FilterVar',filtervar);
     %     toc
-
-        % TODO: save Result
-        % TODO: this should be moved out into calling function 
-        Datafile = strrep(Openfile{iFile},'.tif',[' rawVel ', num2str(WinStep), '-', num2str(WinSize), '-New.mat']);
+        
+        % TODO; allow user to specify this?
+        Datafile = strrep(filepath,'.tif',[' rawVel ', num2str(WinStep), '-', num2str(WinSize), '-New.mat']);
         % TODO: make sure not missing any variables
-        save(Datafile,'Openfile','Result','WinSize','WinStep','msPerLine','umPerPx','MaxLines','UseAvg','left','right','transform','metric','optimizer','filtervar');
+        Settings = T(iFile, :);
+        save(Datafile,'Settings','Result');
+        
+        if nargout < 1
+            clear Result
+        end
     end
 end
