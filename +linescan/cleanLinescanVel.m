@@ -75,7 +75,7 @@ function Results = cleanLinescanVel(varargin)
         Data.avg = avg;
         Data.stdev = stdev;
         Data.PctValid = PctValid;
-        save(strrep(Openfile{iFile}, '.mat', 'ExcludedPts.mat'),'-struct','Data');
+        save(strrep(Openfile{iFile}, '.mat', '_ExcludedPts.mat'),'-struct','Data');
     end
     % Write CSV file with summary statistics for each input file
     filepath = fileparts(Openfile{1});
