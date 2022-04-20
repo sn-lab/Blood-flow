@@ -1,4 +1,99 @@
 function Result = calcLinescanVelTiff(varargin)
+    if nargin == 1 && istable(varargin{1})
+        T = varargin{1};
+    else
+        p = parseInputs(varargin);
+        T = getSettings(p);
+    end
+    
+    %% Display settings table
+    % TODO: always display all settings if any need to be set, but make
+    % sure to set the default values to what was pulled from metadata
+    % TODO: should input override metadata? Issue warning if don't match?
+    T = uitableinteractive(T);
+    
+    %% Process Linescans
+    % subtract average value of each column from image to take out vertical stripes
+    % TODO: should this happen frame-by-frame, block-by-block or over
+    % entire image??
+    % Before this was happening block-by-block which seems a bit sus
+    % Maybe should move out depening on which
+    % TODO: Create DisplayWaitbar argument?
+    % Create waitbar
+    nFiles = size(T,1);
+    
+    % Create waitbar
+    hWait = waitbar(0, '', 'Name', 'Linescan Files');
+    hWait.Children.Title.Interpreter = 'none';
+    for iFile = 1:1:nFiles
+        % Update waitbar
+        [~,name,~] = fileparts(T.filepath{iFile});
+        waitbar((iFile-1)/nFiles, hWait, {['Processing linescan (', num2str(iFile), '/' num2str(nFiles),')'], name})
+        
+        filepath = T.filepath{iFile};
+        MaxLines = T.MaxLines(iFile);
+        UseAvg = T.UseAvg(iFile);
+        % TODO: should these be rounded here?
+        left = T.MaskLeft(iFile);
+        right = T.MaskRight(iFile);
+        msPerLine = T.msPerLine(iFile);
+        umPerPx = T.umPerPx(iFile);
+        WinSize = T.WinSize(iFile);
+        WinStep = T.WinStep(iFile);
+        transform = char(T.Transform{iFile});
+        metric = char(T.Metric{iFile});
+        optimizer = char(T.Optimizer{iFile});
+        filtervar = T.FilterVar(iFile);
+        useGPU = T.UseGPU(iFile);
+        
+        % Read full image stack and reshape to 2D
+        hTiffReader = util.io.readTiffStack(filepath);
+        I = permute(hTiffReader.data(), [2,1,3]);
+        delete(hTiffReader);
+
+        nPix = size(I, 2);
+        I = permute(I, [1,3,2]);
+        I = reshape(I, [], nPix);
+        nLines = size(I, 1);
+        
+        % TODO: validate this earlier?
+        MaxLines = min(MaxLines, nLines);
+
+        % Get rid of vertical stripes?
+        if UseAvg
+            I = I-mean(I);
+        end
+
+        % Take requested section of image
+        % TODO: need to round here? Should masklinescan return rounded
+        % value?
+        I = I(1:MaxLines, left:right);
+        
+        % Transfer image to GPU, if requested
+        if useGPU; I = gpuArray(I); end
+        
+        % Run Linescan
+    %     tic
+        Result = linescan.calcLinescanVel(I, msPerLine, umPerPx, WinSize, WinStep, 'Transform', transform, 'Metric', metric, 'Optimizer', optimizer, 'FilterVar',filtervar);
+    %     toc
+        
+        % TODO; allow user to specify this?
+        Datafile = strrep(filepath,'.tif',[' rawVel ', num2str(WinStep), '-', num2str(WinSize), '-New.mat']);
+        % TODO: make sure not missing any variables
+        Settings = T(iFile, :);
+        save(Datafile,'Settings','Result');
+        
+    end
+    % Complete and close waitbar
+    waitbar(1, hWait)
+    close(hWait);
+    
+    if nargout < 1
+        clear Result
+    end
+end
+
+function p = parseInputs(args)
     p = inputParser();
     p.addOptional('filepath','',@ischar)
     p.addOptional('WinSize',75,@(x) isnumeric(x)&&isscalar(x));
@@ -13,14 +108,11 @@ function Result = calcLinescanVelTiff(varargin)
     p.addParameter('MaxLines',inf);
     p.addParameter('UseAvg',false,@islogical);
     p.addParameter('FilterVar',25,@isreal);
-    p.parse(varargin{:});
-    
-    
-    % TODO: allow output as CSV?
+    p.addParameter('UseGPU',false,@islogical);
+    p.parse(args{:});
+end
 
-    % TODO: make sure all output files are being saved in input directory;
-    % Get input folder and file
-    % TODO: allow multi-select
+function T = getSettings(p)
     if isempty(p.Results.filepath)
         % Get file to open
         [fname,pname] = uigetfile('*.*','MultiSelect','on');
@@ -119,77 +211,6 @@ function Result = calcLinescanVelTiff(varargin)
         T.MaxLines(iFile) = p.Results.MaxLines;
         T.UseAvg(iFile) = p.Results.UseAvg;
         T.FilterVar(iFile) = p.Results.FilterVar;
-        
-    end
-    
-    %% Display settings table
-    % TODO: always display all settings if any need to be set, but make
-    % sure to set the default values to what was pulled from metadata
-    % TODO: should input override metadata? Issue warning if don't match?
-    T = uitableinteractive(T);
-    
-    %% Process Linescans
-    % subtract average value of each column from image to take out vertical stripes
-    % TODO: should this happen frame-by-frame, block-by-block or over
-    % entire image??
-    % Before this was happening block-by-block which seems a bit sus
-    % Maybe should move out depening on which
-    for iFile = 1:1:size(T,1)
-        filepath = T.filepath{iFile};
-        MaxLines = T.MaxLines(iFile);
-        UseAvg = T.UseAvg(iFile);
-        % TODO: should these be rounded here?
-        left = T.MaskLeft(iFile);
-        right = T.MaskRight(iFile);
-        msPerLine = T.msPerLine(iFile);
-        umPerPx = T.umPerPx(iFile);
-        WinSize = T.WinSize(iFile);
-        WinStep = T.WinStep(iFile);
-        errorcheck = false;
-        transform = char(T.Transform{iFile});
-        metric = char(T.Metric{iFile});
-        optimizer = char(T.Optimizer{iFile});
-        filtervar = T.FilterVar(iFile);
-        
-        % Read full image stack and reshape to 2D
-        hTiffReader = util.io.readTiffStack(filepath);
-        I = permute(hTiffReader.data(), [2,1,3]);
-        delete(hTiffReader);
-
-        nPix = size(I, 2);
-        I = permute(I, [1,3,2]);
-        I = reshape(I, [], nPix);
-        nLines = size(I, 1);
-        
-        % TODO: validate this earlier?
-        MaxLines = min(MaxLines, nLines);
-
-        % Get rid of vertical stripes?
-        if UseAvg
-            I = I-mean(I);
-        end
-
-        % Take requested section of image
-        % TODO: need to round here? Should masklinescan return rounded
-        % value?
-        I = I(1:MaxLines, left:right);
-        
-        % Run on GPU
-        I = gpuArray(I);
-        
-        % Run Linescan
-    %     tic
-        Result = linescan.calcLinescanVel(I, msPerLine, umPerPx, WinSize, WinStep, 'Transform', transform, 'Metric', metric, 'Optimizer', optimizer, 'FilterVar',filtervar);
-    %     toc
-        
-        % TODO; allow user to specify this?
-        Datafile = strrep(filepath,'.tif',[' rawVel ', num2str(WinStep), '-', num2str(WinSize), '-New.mat']);
-        % TODO: make sure not missing any variables
-        Settings = T(iFile, :);
-        save(Datafile,'Settings','Result');
-        
-        if nargout < 1
-            clear Result
-        end
+        T.UseGPU(iFile) = p.Results.UseGPU;
     end
 end
