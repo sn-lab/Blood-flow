@@ -1,4 +1,4 @@
-function Results = cleanLinescanVel(varargin)
+function T = cleanLinescanVel(varargin)
 %cleanLinescanVel Allows user to clean linescan velocity by setting upper
 %and lower limits on velocity, then generates summary statistics.
 %   Detailed explanation goes here
@@ -18,15 +18,14 @@ function Results = cleanLinescanVel(varargin)
         Openfile = p.Results.filepath;
     end
     
-    % For single file, put Openfile (char) into cell array to standardize
-    % format
+     % format
     if ~iscell(Openfile)
         Openfile = {Openfile};
     end
     
     % Intialize output table
     % TODO: preallocate size?
-    Results = table();
+    T = table();
     
     for iFile = 1:1:length(Openfile)
         % TODO: is this necessary?
@@ -37,11 +36,12 @@ function Results = cleanLinescanVel(varargin)
 
         VelLimits = [-inf, inf];
         PctValid = 100;
-        vel = Data.Result(:,3);
-        avg = mean(Data.Result(:,3));
-        stdev = std(Data.Result(:,3));
+        vel = Data.Result.Velocity;
+        avg = mean(vel);
+        stdev = std(vel);
         
-        time = Data.Result(:,2);
+        % Average StartTime and EndTime
+        time = mean(Data.Result{:,3:4}, 2);
         
         % Create figure
         f = figure;
@@ -79,17 +79,25 @@ function Results = cleanLinescanVel(varargin)
     end
     % Write CSV file with summary statistics for each input file
     filepath = fileparts(Openfile{1});
-    writetable(Results, fullfile(filepath, 'Linescan Results.csv'));
+    writetable(T, fullfile(filepath, 'Linescan Results.csv'));
     
-    function figureKeyPressFcn(~,~)
-        getNewVelLimits();
-        updateData();
+    
+    %% Helper functions
+    function figureKeyPressFcn(~,evt)
+        switch evt.Key
+            case 'escape'
+                uiresume(f);
+                close(f);
+            otherwise
+                getNewVelLimits();
+                updateData();
+        end
     end
     
     
     function updateData()
         % Deal with Outliers
-        vel = Data.Result(:,3);
+        vel = Data.Result.Velocity;
         outliers = (vel<=VelLimits(1)) | (vel>=VelLimits(2));
         vel(outliers) = NaN;
         

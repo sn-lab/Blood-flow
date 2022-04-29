@@ -70,7 +70,7 @@ function Result = calcLinescanVelTiff(varargin)
         I = I(1:MaxLines, left:right);
         
         % Transfer image to GPU, if requested
-        if useGPU; I = gpuArray(I); end
+        if useGPU; gpuDevice(1); I = gpuArray(I); end
         
         % Run Linescan
     %     tic
