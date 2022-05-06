@@ -45,6 +45,7 @@ function Result = calcLinescanVelTiff(varargin)
         optimizer = char(T.Optimizer{iFile});
         filtervar = T.FilterVar(iFile);
         useGPU = T.UseGPU(iFile);
+        invert = T.Invert(iFile);
         
         % Read full image stack and reshape to 2D
         hTiffReader = util.io.readTiffStack(filepath);
@@ -70,11 +71,11 @@ function Result = calcLinescanVelTiff(varargin)
         I = I(1:MaxLines, left:right);
         
         % Transfer image to GPU, if requested
-        if useGPU; I = gpuArray(I); end
+        if useGPU; gpuDevice(1); I = gpuArray(I); end
         
         % Run Linescan
     %     tic
-        Result = linescan.calcLinescanVel(I, msPerLine, umPerPx, WinSize, WinStep, 'Transform', transform, 'Metric', metric, 'Optimizer', optimizer, 'FilterVar',filtervar);
+        Result = linescan.calcLinescanVel(I, msPerLine, umPerPx, WinSize, WinStep, 'Invert', invert, 'Transform', transform, 'Metric', metric, 'Optimizer', optimizer, 'FilterVar',filtervar);
     %     toc
         
         % TODO; allow user to specify this?
@@ -109,6 +110,7 @@ function p = parseInputs(args)
     p.addParameter('UseAvg',false,@islogical);
     p.addParameter('FilterVar',25,@isreal);
     p.addParameter('UseGPU',false,@islogical);
+    p.addParameter('Invert',NaN,@islogical);
     p.parse(args{:});
 end
 
@@ -128,6 +130,7 @@ function T = getSettings(p)
     end
     
     T = table();
+    T.Properties.Description = 'Linescan Settings';
     for iFile = 1:1:length(Openfile)
         %% Metadata
         hTiff = Tiff(Openfile{iFile}, 'r');
@@ -141,7 +144,9 @@ function T = getSettings(p)
         % Convert to microns
         switch ResolutionUnit
             case 1  % 'None'
-                umPerPx = NaN;
+                % TODO: is this a valid assumption?
+                % Assumed to be um
+                umPerPx = 1/XResolution;
             case 2  % 'Inch' = 25400 um
                 umPerPx = 1/XResolution*25400;
             case 3  % 'Centimeter' = 10000 um
@@ -163,11 +168,13 @@ function T = getSettings(p)
 
         % Parse and format metadata for different ScanImage versions
         msPerLine = NaN;
+        invert = false;
         switch version
             case '3.8'
                 % ImageDescription tag stores 'state' structure
                 s = util.io.str2struct(imageDescription);
                 msPerLine = s.state.acq.msPerLine;
+                invert = sign(s.state.acq.scanRotation) == -1;
             case {'2016','''2018a'''}
                 s = util.io.str2struct(software);
                 % TODO:
@@ -185,6 +192,10 @@ function T = getSettings(p)
         if ~isnan(p.Results.msPerLine) && msPerLine ~= p.Results.msPerLine
             warning('Input msPerLine does not match XResolution in Tiff header data');
             msPerLine = p.Results.msPerLine;
+        end
+        if ~isnan(p.Results.Invert) && invert ~= p.Results.Invert
+            warning('Input invert does not match scanRotation in Tiff header data');
+            invert = p.Results.Invert;
         end
         
         %% TODO: get mask
@@ -212,5 +223,6 @@ function T = getSettings(p)
         T.UseAvg(iFile) = p.Results.UseAvg;
         T.FilterVar(iFile) = p.Results.FilterVar;
         T.UseGPU(iFile) = p.Results.UseGPU;
+        T.Invert(iFile) = invert;
     end
 end

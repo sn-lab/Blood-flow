@@ -1,6 +1,6 @@
 function T = uitableinteractive(T)
     % Create UI figure
-    hUIFig = uifigure('Units','normalized','Position',[0.25, 0.25, 0.5, 0.5]);
+    hUIFig = uifigure('Units','normalized','Position',[0.25, 0.25, 0.5, 0.5],'Name',T.Properties.Description);
 
     % Create table UI component
     hUITable = uitable(hUIFig, 'Data', T, 'Units', 'normalized', 'Position', [0.05, 0.05, 0.9, 0.9]);

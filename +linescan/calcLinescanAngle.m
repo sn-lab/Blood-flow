@@ -28,13 +28,14 @@ function [angle, fval, IRot] = calcLinescanAngle(varargin)
 %                           stripes after the angle-based transformation
 %                           'Transform'
 % 
-%       'Optimzier'         One of 'globalsearch', 'multistart',
+%       'Optimizer'          One of 'globalsearch', 'multistart',
 %                           'binarysearch', 'exhaustive', 'radonlegacy', or
 %                           'svdlegacy' specifies the optimization function
 %                           used to optimize the transformation angle in
 %                           order to maximize the output value of the
 %                           'Metric' function.
 
+% TODO: need to fully support/test custom optimizer
 % TODO: document optimzation options if allowing that as an input
 % I = Input image
 % options.I_sign = 1 for positive slope, 0 for negative, 2 for both
@@ -105,12 +106,16 @@ switch p.Results.Optimizer
         [angle, fval] = optimizeAngleMultiStart(ObjectiveFun, Theta0, MinTheta, MaxTheta, ThetaTol, k);
     case 'binarysearch'
         maxIter = 5000;
-        [angle, fval] = optimizeAngleLoop(ObjectiveFun, [MinTheta,MaxTheta], ThetaTol, maxIter);
+        [angle, fval] = optimizeAngleLoop(ObjectiveFun, MinTheta, MaxTheta, ThetaTol, maxIter);
     case 'exhaustive'
-        [angle, fval] = optimizeAngleExhaustive(ObjectiveFun, options);
+%         MinTheta = 
+%         MaxTheta = 
+        [angle, fval] = optimizeAngleExhaustive(ObjectiveFun, MinTheta, MaxTheta, ThetaTol, options);
     case 'radonlegacy'
+%         MinTheta = 
+%         MaxTheta = 
         options.Thetas = 'orig';    % Or 'simple'
-        [angle, fval] = optimizeAngleExhaustive(ObjectiveFun, options);
+        [angle, fval] = optimizeAngleExhaustive(ObjectiveFun, MinTheta, MaxTheta, ThetaTol, options);
     case 'svdlegacy'
         [angle, fval] = optimizeAngleSVDLegacy(ObjectiveFun, MinTheta, MaxTheta, ThetaTol, Steps);
     otherwise
@@ -248,8 +253,8 @@ end
 
 
 % TODO: modify this to allow thetaRange input for consistency with other
-% objective functions
-function [angle, fval] = optimizeAngleExhaustive(fun, options)
+% objective functions -- this will allow elimination of the I_sign option
+function [angle, fval] = optimizeAngleExhaustive(fun, MinTheta, MaxTheta, ThetaTol, options)
 % This function performs the radon transform on a precalculated list of
 % angles (approximately evenly spaced in velocity units), and only afer
 % picks the angle from that list that that produced the radon transform
@@ -290,7 +295,7 @@ function [angle, fval] = optimizeAngleExhaustive(fun, options)
     end
     
     
-    
+    % TODO: issue a warning if maxes out??
     fvals = fun(thetas);
     [fval,iTheta] = min(fvals);
     angle = thetas(iTheta);
@@ -331,6 +336,8 @@ function [angle, fval] = optimizeAngleExhaustive(fun, options)
     % thetas = radonAnglesSimple([57.290, 0.0175]),0.06);
     % TODO: velRange should be divisible by velTol so endpoints are
     % included
+    % FIXME: velTol/velRange should be renamed to thetRange/thetaTol etc
+    % because thid function calculates angles, not velocity
     function thetas = radonAnglesSimple(velRange, velTol)        
         % TODO: should this be corrected for radon? i.e. atand(-vel)+90
 %         vels = velRange(1):velTol:velRange(2);
@@ -348,12 +355,13 @@ end
 % essentially uses a binary search to optimize theta.
 % TODO: tolerance should be in velocity units, not theta units....
 % function [theta, fval, flag] = optimizeAngleLoop(fun, thetaRange, thetaTol, maxIter)
-function [theta, fval] = optimizeAngleRecurse(I, thetaRange, velTol)
+function [theta, fval] = optimizeAngleRecurse(I, minTheta, maxTheta, velTol)
     % |----'----!----'----|
     % Check quarters (') of range to narrow down range to one half of
     % original, either [|, !], or [!, |]. If first quarter has a greater
     % variance than the third quarter, new range is [|, !], otherwise it is
     % [!, |].
+    thataRange = [minTheta, maxTheta];
     midTheta = mean(thetaRange);
 %     iTol = (midTheta-thetaRange(1))/2;
     thetas = [mean([thetaRange(1), midTheta]), mean([midTheta, thetaRange(2)])];
@@ -386,7 +394,8 @@ end
 
 
 % Same function as above but using a while loop instead of recursion
-function [theta, fval, flag] = optimizeAngleLoop(fun, thetaRange, thetaTol, maxIter)
+% TODO: should this accept a Theta0 argument for start point?
+function [theta, fval, flag] = optimizeAngleLoop(fun, minTheta, maxTheta, thetaTol, maxIter)
     % |----'----!----'----|
     % Check quarters (') of range to narrow down range to one half of
     % original, either [|, !], or [!, |]. If first quarter has a greater
@@ -394,6 +403,7 @@ function [theta, fval, flag] = optimizeAngleLoop(fun, thetaRange, thetaTol, maxI
     % [!, |].
     i = 1;
     iTol = Inf;
+    thetaRange = [minTheta, maxTheta];
     % Loop until tolerance is less than requested, or maximum number of
     % iterations is exceeded.
     while iTol > thetaTol && i <= maxIter
