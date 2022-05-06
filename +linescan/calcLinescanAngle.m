@@ -319,7 +319,8 @@ function [angle, fval] = optimizeAngleExhaustive(fun, MinTheta, MaxTheta, ThetaT
     % TODO: what are these function inputs??
     function theta = radonAngles(numInc,x)
         numInc=x*numInc;
-        velocityHigh = tand(89);
+        velocityHigh = tand(89.5249);
+%         velocityHigh = tand(89);
         velocityLow = tand(1);
         
         % TODO: is this close enough to original or should go back to true
@@ -327,7 +328,8 @@ function [angle, fval] = optimizeAngleExhaustive(fun, MinTheta, MaxTheta, ThetaT
         velInc = (velocityHigh - velocityLow)/numInc;
         theta = atand(1./(velocityHigh:-velInc:(velocityHigh-velInc*x*173)));
 
-        thetaLin = 22:1/x:89;
+        thetaLin = 10.8435:1/x:89;
+%         thetaLin = 22:1/x:89;
 
         theta = [theta, thetaLin];
     end
