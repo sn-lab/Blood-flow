@@ -12,7 +12,7 @@ function T = cleanLinescanVel(varargin)
     % TODO: allow multi-select
     if isempty(p.Results.filepath)
         % Get file to open
-        [fname,pname] = uigetfile('*.*','MultiSelect','on');
+        [fname,pname] = uigetfile({'*.mat';'*.*'},'MultiSelect','on');
         Openfile = fullfile(pname, fname);
     else
         Openfile = p.Results.filepath;
@@ -108,8 +108,9 @@ function T = cleanLinescanVel(varargin)
         
         % Update plots
         VelPlot.YData = vel;
-        VelHist.Data = vel;
-        subtitle(['Velocity: ', num2str(avg), 'mm/s  Std. Dev.: ', num2str(stdev)])
+        VelHist = histogram(f.Children(1),vel,25,'Orientation','horizontal');
+        subtitle(f.Children(1),['Velocity: ', num2str(avg), 'mm/s  Std. Dev.: ', num2str(stdev)])
+        subtitle(f.Children(2),['Velocity: ', num2str(avg), 'mm/s  Std. Dev.: ', num2str(stdev)])
     end
     
     function getNewVelLimits()
