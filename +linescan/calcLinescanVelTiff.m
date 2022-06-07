@@ -62,7 +62,7 @@ function Result = calcLinescanVelTiff(varargin)
 
         % Get rid of vertical stripes?
         if UseAvg
-            I = I-mean(I);
+            I = double(I)-mean(I,1);
         end
 
         % Take requested section of image
@@ -117,7 +117,7 @@ end
 function T = getSettings(p)
     if isempty(p.Results.filepath)
         % Get file to open
-        [fname,pname] = uigetfile('*.*','MultiSelect','on');
+        [fname,pname] = uigetfile({'*.tif;*.tiff';'*.*'},'MultiSelect','on');
         Openfile = fullfile(pname, fname);
         % TODO: is this necessary?
         disp(Openfile);
