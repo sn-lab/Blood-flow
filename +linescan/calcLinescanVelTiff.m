@@ -10,7 +10,7 @@ function Result = calcLinescanVelTiff(varargin)
     % TODO: always display all settings if any need to be set, but make
     % sure to set the default values to what was pulled from metadata
     % TODO: should input override metadata? Issue warning if don't match?
-    T = uitableinteractive(T);
+    T = util.uitableinteractive(T);
     
     %% Process Linescans
     % subtract average value of each column from image to take out vertical stripes
