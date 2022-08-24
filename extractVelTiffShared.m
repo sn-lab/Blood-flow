@@ -351,6 +351,7 @@ if keepgoing
         last = first+WinSize;
         Result = [];
         
+        prevstr = '';
         while last<Maxlines % loop thorugh lines
             lines = f_get_lines_from_tiff(Openfile2, first, last);
             
@@ -386,9 +387,12 @@ if keepgoing
             %             ---------------------------------------------
             
             Result = vertcat(Result, veldata);
-            first = first + WinPixelsDown %display the line being analyzed
+            first = first + WinPixelsDown;
             last = first+WinSize;
             npoints = npoints+1;
+            str = ['Analyzed line ' num2str(first) ];
+            refreshdisp(str,prevstr,first);
+            prevstr = str;
         end
 
         save(Datafile,'Result', 'Tfactor', 'WinPixelsDown');
@@ -647,4 +651,20 @@ for i=22:1/x:89,
 end
 
 theta = [theta, thetaLin];
+end
+
+
+function refreshdisp(str,prevstr,iteration)
+
+if ~exist('iteration','var')
+    iteration=2;
+end
+
+if iteration==1
+    fprintf(str)
+else
+    fprintf(char(8*ones(1,length(prevstr))));
+    fprintf(str);
+end
+
 end
