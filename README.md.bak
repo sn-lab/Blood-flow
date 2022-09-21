@@ -25,12 +25,7 @@ This repository contains the most up-to-date version of the linescan code used f
 
 - 6. **avgDiameterinROI.m** extracts the diameter of the vessel by selecting a rectangular area on the vessel manually. gives value in pixels and user needs to use um/pixel conversion factor to transform to microns
 
-- 7. **arbitraryLinescanPreprocess.m** pre-processes arbitrary linescan data: linearizes the data based on the scanner positions to the drawn line ROI(s) and saves this data to a .tif file compatible with the rest of the blood-flow analysis pipeline
-	Inputs: Raw arbitrary line scan data (e.g. pmt.dat, scnnr.dat, meta.txt), and (optionally) a single-frame raw image stack of vessel snapshot, used for vessel diameter estimation
-	Outputs: Blood labelling channel .tif file, ms/line, um/pixel, and (optionally) estimate of vessel diameter 
-
-
-**FOR OLD STYLE LINE SCANS, USE THE FILES IN THE ORDER THEY APPEAR IN THIS README. YOU MAY SKIP #1 AND #2 IF YOU ALREADY HAVE MS/LINE AND PIXEL/UM conversion factors. FOR ARBITRARY LINE SCANS, USE FILES 7, 4, and 5, IN THAT ORDER**
+**UN THE FILES IN THE ORDER THEY APPEAR IN THIS README. YOU MAY SKIP #1 AND #2 IF YOU ALREADY HAVE MS/LINE AND PIXEL/UM conversion factors**
 
 ## From share_instructions_2012-03-08.pdf (Revised on 3/8/2012):
 ### extractVelTiffShared.m
