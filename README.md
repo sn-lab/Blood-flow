@@ -4,33 +4,39 @@ This repository contains the most up-to-date version of the linescan code used f
 ### In here you will find:
 
 - 1. **scim_openTif.m** (only use if you forgot the ms/line you used to image. You can also use the pipeline to get this number)
-	Input: Raw image stacks
-	Output: number of ms/line
+
+			Input: Raw image stacks
+			Output: number of ms/line
 
 - 2. **pixelSizeFromImageHeader.m** (you should use the pipeline to get this number. THIS IS NOT UP-TO-DATE WITH THE CONVERSION FACTORS FOR ALL THE SETUPS. If you decide to use it, make sure you are using the appropriate conversion factors)
-	Input: Raw image stacks
-	Output: Conversion factor for um/pixels of your image.
+	
+			Input: Raw image stacks
+			Output: Conversion factor for um/pixels of your image.
 
 - 3. **extractVelTiffShared.m** extracts the raw blood flow velocity from each file using a **radon transform** algorithm. requires um/pixel and ms/line, also requires Texas Red or blood plasma label channel only
-	Input: Blood labelling channel
-	Output: .mat file with the RAW velocity data
+	
+			Input: Blood labelling channel
+			Output: .mat file with the RAW velocity data
 
 - 4. **velocity_from_tif.m** extracts the raw blood flow velocity from each file using a **SVD algorithm**. requires um/pixel and ms/line, also requires Texas Red or blood plasma label channel only
-	Input: Blood labelling channel
-	Output: .mat file with the RAW velocity data
+	
+			Input: Blood labelling channel
+			Output: .mat file with the RAW velocity data
 	
 - 5. **view_velocities_save_data.m** extracts the final velocity values by filtering noise and background from the initial measurements. This is done with input from the user
-	Input: rawVel.mat files from extractVelTiffShared.m 
-	Output: rawVel ExcludedPts.mat and excel file with average values of velocity and 	standard deviation 
+	
+			Input: rawVel.mat files from extractVelTiffShared.m 
+			Output: rawVel ExcludedPts.mat and excel file with average values of velocity and 	standard deviation 
 
 - 6. **avgDiameterinROI.m** extracts the diameter of the vessel by selecting a rectangular area on the vessel manually. gives value in pixels and user needs to use um/pixel conversion factor to transform to microns
 
 - 7. **arbitraryLinescanPreprocess.m** pre-processes arbitrary linescan data: linearizes the data based on the scanner positions to the drawn line ROI(s) and saves this data to a .tif file compatible with the rest of the blood-flow analysis pipeline
-	Inputs: Raw arbitrary line scan data (e.g. pmt.dat, scnnr.dat, meta.txt), and (optionally) a single-frame raw image stack of vessel snapshot, used for vessel diameter estimation
-	Outputs: Blood labelling channel .tif file, ms/line, um/pixel, and (optionally) estimate of vessel diameter 
+	
+			Inputs: Raw arbitrary line scan data (pmt.dat, scnnr.dat, meta.txt), and (optionally) a single-frame raw image stack of vessel snapshot for vessel diameter estimation
+			Outputs: Blood labelling channel .tif file, ms/line, um/pixel, and (optionally) estimate of vessel diameter 
 
 
-**FOR OLD STYLE LINE SCANS, USE THE FILES IN THE ORDER THEY APPEAR IN THIS README. YOU MAY SKIP #1 AND #2 IF YOU ALREADY HAVE MS/LINE AND PIXEL/UM conversion factors. FOR ARBITRARY LINE SCANS, USE FILES 7, 4, and 5, IN THAT ORDER**
+**FOR OLD STYLE LINE SCANS, USE THE FILES IN THE ORDER THEY APPEAR IN THIS README. YOU MAY SKIP #1 AND #2 IF YOU ALREADY HAVE MS/LINE AND PIXEL/UM CONVERSION FACTORS. FOR ARBITRARY LINE SCANS, USE FILES 7, 4, and 5, IN THAT ORDER**
 
 ## From share_instructions_2012-03-08.pdf (Revised on 3/8/2012):
 ### extractVelTiffShared.m
