@@ -228,12 +228,15 @@ numFeedbackChannels = eval(char(extractBetween(metadataTxt,'SI.hScan2D.lineScanN
 
 %if snapshot exists, use header info instead
 if strncmpi(getVesselWidthSnap,'y',1)
-    T = Tiff(fullfile(path,snapName));
-    setDirectory(T,vesselChannel)
-    snapshot = read(T);
-    [imageH,imageW] = size(snapshot);
-    imgdescr = getTag(T,'ImageDescription');
-    date = datetime(eval(char(extractBetween(imgdescr, 'epoch = ', newline))));
+    snapshot = imread(fullfile(path,snapName),vesselChannel);
+    imgdescr = '';
+    % Tiff doesn't always work on macs?
+%     T = Tiff(fullfile(path,snapName));
+%     setDirectory(T,vesselChannel)
+%     snapshot = read(T);
+%     [imageH,imageW] = size(snapshot);
+%     imgdescr = getTag(T,'ImageDescription');
+%     date = datetime(eval(char(extractBetween(imgdescr, 'epoch = ', newline))));
 end
 
 %get microns/pix measureent
@@ -362,6 +365,7 @@ if length(scannerPosTime)~=length(linescanTime) || any(scannerPosTime~=linescanT
         medScannerPosFull(:,2) = fillmissing(medScannerPosFull(:,2),'makima');
         fitInds = false(size(linescanTime)); %no fit needed
     else 
+        fprintf(['Only ' num2str(100*round(scannerPosTime(end)/linescanTime(end))) ' percent of scan position was logged -- missing positions will be estimated.\n']);
         %fit fourier series to position data to replace missing points and interpolate values
         period = (samplesPerFrame/sampleRateLinescan);
         tripleTime = [scannerPosTime'; period+scannerPosTime'; (2*period)+scannerPosTime'];
