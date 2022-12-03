@@ -288,23 +288,23 @@ if numRois==1
 else %have user verify that the line is drawn correctly
     flowRois = 1:2:numRois;
     diamRois = 2:2:numRois;
-    figure();
-    ax = axes();
+    roiFig = figure();
+    roiAx = axes();
     if strncmpi(getVesselWidthSnap,'y',1)
-        imshow(snapshot)
+        imshow(snapshot,'Parent',roiAx)
         hold on
     end
     legendNames = cell(1,numRois);
     for r = 1:numRois
-        plot(lineXPix(r,:),lineYPix(r,:),'Color',plotColors(r,:),'LineWidth',3); %plot the linescan line over the snapshot
+        plot(lineXPix(r,:),lineYPix(r,:),'Color',plotColors(r,:),'LineWidth',3,'Parent',roiAx); %plot the linescan line over the snapshot
         hold on
         legendNames{r} = ['ROI ' num2str(r)];
     end
-    set(ax,'YDir','reverse')
-    xlim([1 imageW]);
-    ylim([1 imageH]);
-    legend(legendNames)
-    title('Line position')
+    set(roiAx,'YDir','reverse')
+    roiAx.xlim = [1 imageW];
+    roiAx.ylim = [1 imageH];
+    legend(legendNames,'Parent',roiAx)
+    title('Line position','Parent',roiAx)
     
     prompt={'ROIs for blood flow measurement:','ROIs for diameter measurement:'};
     name='ROI Identification';
@@ -316,7 +316,7 @@ else %have user verify that the line is drawn correctly
     diamRois = str2num(answer{2});
     assert(any(flowRois'==(1:numRois),2),'Invalid blood flow ROI number entered')
     assert(any(diamRois'==(1:numRois),2),'Invalid diameter ROI number entered')
-    close(gcf)
+    close(roiFig)
 end
 roiNames = [];
 for r = 1:numRois
@@ -462,65 +462,65 @@ close(waitfig)
 %% create figure of roi lines and full scannerpos
 marker_size = 8;
 line_width = 5;
-fig1 = figure('Position',[100 100 1500 400]);
-ax = subplot(1,3,1);
+scanFig = figure('Position',[100 100 1500 400]);
+scanAx1 = subplot(1,3,1);
 for r = 1:numRois
-    plot(lineXDeg(r,:),lineYDeg(r,:),'Color',plotColors(r,:),'LineWidth',line_width);
+    plot(lineXDeg(r,:),lineYDeg(r,:),'Color',plotColors(r,:),'LineWidth',line_width,'Parent',scanAx1);
     hold on
 end
 loggedRows = find(~fitInds);
 interpRows = find(fitInds);
-scatter(medScannerPosFull(loggedRows,1),medScannerPosFull(loggedRows,2),marker_size,'filled','MarkerEdgeColor','none','MarkerFaceColor',plotColors(numRois+1,:));
-scatter(medScannerPosFull(interpRows,1),medScannerPosFull(interpRows,2),marker_size,'filled','MarkerEdgeColor','none','MarkerFaceColor',plotColors(numRois+2,:));
-legend([roiNames {'logged scanner positions','interpolated scanner positions'}]);
+scatter(medScannerPosFull(loggedRows,1),medScannerPosFull(loggedRows,2),marker_size,'filled','MarkerEdgeColor','none','MarkerFaceColor',plotColors(numRois+1,:),'Parent',scanAx1);
+scatter(medScannerPosFull(interpRows,1),medScannerPosFull(interpRows,2),marker_size,'filled','MarkerEdgeColor','none','MarkerFaceColor',plotColors(numRois+2,:),'Parent',scanAx1);
+legend(scanAx1,[roiNames {'logged scanner positions','interpolated scanner positions'}]);
 axis equal
-xlimits = ax.XLim;
+xlimits = scanAx1.XLim;
 xlimits = [xlimits(1)-0.5 xlimits(2)+0.5];
-xlim(xlimits);
-ylimits = ax.YLim;
+scanAx1.XLim = xlimits;
+ylimits = scanAx1.YLim;
 ylimits = [ylimits(1)-1 ylimits(2)];
-ylim(ylimits);
-ylabel('y scan angle (deg)')
-xlabel('x scan angle (deg)')
-set(gca,'YDir','reverse')
+scanAx1.YLim = ylimits;
+ylabel(scanAx1,'y scan angle (deg)');
+xlabel(scanAx1,'x scan angle (deg)');
+set(scanAx1,'YDir','reverse')
 
-subplot(1,3,2)
+scanAx2 = subplot(1,3,2);
 for r = 1:numRois
     plot(lineXDeg(r,:),lineYDeg(r,:),'Color',plotColors(r,:),'LineWidth',line_width);
     hold on
 end
 legendNames = roiNames;
 for r = 1:numRois
-    scatter(medScannerPosFull(find(roiInds(r,:)),1),medScannerPosFull(find(roiInds(r,:)),2),marker_size,'filled','MarkerEdgeColor','none','MarkerFaceColor',plotColors(1+numRois,:));
+    scatter(medScannerPosFull(find(roiInds(r,:)),1),medScannerPosFull(find(roiInds(r,:)),2),marker_size,'filled','MarkerEdgeColor','none','MarkerFaceColor',plotColors(1+numRois,:),'Parent',scanAx2);
     legendNames = [legendNames {['ROI ' num2str(r) ' positions']}];
 end
-scatter(medScannerPosFull(find(~any(roiInds,1)),1),medScannerPosFull(find(~any(roiInds,1)),2),marker_size,'filled','MarkerEdgeColor','none','MarkerFaceColor',[0.4 0.4 0.4]);
-legend([legendNames {'excluded positions'}]);
+scatter(medScannerPosFull(find(~any(roiInds,1)),1),medScannerPosFull(find(~any(roiInds,1)),2),marker_size,'filled','MarkerEdgeColor','none','MarkerFaceColor',[0.4 0.4 0.4],'Parent',scanAx2);
+legend(scanAx2,[legendNames {'excluded positions'}]);
 axis equal
-xlim(xlimits);
-ylim(ylimits);
-ylabel('y scan angle (deg)')
-xlabel('x scan angle (deg)')
-set(gca,'YDir','reverse')
+scanAx2.XLim = xlimits;
+scanAx2.YLim = ylimits;
+ylabel(scanAx2,'y scan angle (deg)');
+xlabel(scanAx2,'x scan angle (deg)');
+set(scanAx2,'YDir','reverse')
 
-subplot(1,3,3)
+scanAx3 = subplot(1,3,3);
 for r = 1:numRois
-    plot(lineXDeg(r,:),lineYDeg(r,:),'Color',plotColors(r,:),'LineWidth',line_width);
+    plot(lineXDeg(r,:),lineYDeg(r,:),'Color',plotColors(r,:),'LineWidth',line_width,'Parent',scanAx3);
     hold on
 end
 colorVec = repmat(plotColors(numRois+1,:),[samplesPerFrame 1]);
 brightnessVec = repmat(mean(linescanData,2)/max(mean(linescanData,2)),[1 3]);
-scatter(medScannerPosFull(:,1),medScannerPosFull(:,2),marker_size,colorVec.*brightnessVec,'filled');
-legend([roiNames {'mean pixel value'}]);
-axis equal
-xlim(xlimits);
-ylim(ylimits);
-ylabel('y scan angle (deg)')
-xlabel('x scan angle (deg)')
-set(gca,'YDir','reverse')
+scatter(medScannerPosFull(:,1),medScannerPosFull(:,2),marker_size,colorVec.*brightnessVec,'filled','Parent',scanAx3);
+legend(scanAx3,[roiNames {'mean pixel value'}]);
+scanAx3.PlotBoxAspectRatio = [1 1 1];
+scanAx3.XLim = xlimits;
+scanAx3.YLim = ylimits;
+ylabel(scanAx3,'y scan angle (deg)');
+xlabel(scanAx3,'x scan angle (deg)');
+set(scanAx3,'YDir','reverse')
 
 %save figure as tiff
-saveas(fig1,fullfile(filePath,['AL3_AllROIs_' pmtFilename(1:extInd-1) '.tif']));
+saveas(scanFig,fullfile(filePath,['AL3_AllROIs_' pmtFilename(1:extInd-1) '.tif']));
   
 
 %% create tif file of linescan data (for line ROI(s) only)
@@ -564,19 +564,19 @@ if strncmpi(getVesselWidthLine,'y',1)
         diamImage = diamImage/prctile(diamImage,99,'all');
 
         %have the user calculate the edges of the vessel
-        fig4 = figure(); %have user move lines for diameter
-        ax4 = axes();
-        imshow(diamImage)
+        diamFig = figure(); %have user move lines for diameter
+        diamAx = axes();
+        imshow(diamImage,'Parent',diamAx)
         topPos = diamImageH*0.25;
         botPos = diamImageH*0.75;
-        top = drawline('Position',[0 topPos; diamImageW topPos],'LineWidth',0.5,'label','drag to vessel top','LabelAlpha',0.2);
-        bot = drawline('Position',[0 botPos; diamImageW botPos],'LineWidth',0.5,'label','drag to vessel bottom','LabelAlpha',0.2);
-        title('estimate vessel diameter')
-        fig4.Position = [100 100 diamImageW diamImageH];
-        ax4.Position = [0 0 1 1];
-        c = uicontrol(fig4,'String','set vessel edges','Callback','uiresume(gcbf)','FontSize',12);
+        top = drawline(diamAx,'Position',[0 topPos; diamImageW topPos],'LineWidth',0.5,'label','drag to vessel top','LabelAlpha',0.2);
+        bot = drawline(diamAx,'Position',[0 botPos; diamImageW botPos],'LineWidth',0.5,'label','drag to vessel bottom','LabelAlpha',0.2);
+        title(diamAx,'estimate vessel diameter')
+        diamFig.Position = [100 100 diamImageW diamImageH];
+        diamAx.Position = [0 0 1 1];
+        c = uicontrol(diamFig,'String','set vessel edges','Callback','uiresume(gcbf)','FontSize',12);
         c.Position(3:4) = [150 30];
-        uiwait(gcf)
+        uiwait(diamFig)
         clear c
         diamRows = find(roiInds(r,:));
         topInd = diamRows(round(mean(top.Position(:,2)))); %index of scanner position on top side of vessel
@@ -592,15 +592,15 @@ if strncmpi(getVesselWidthLine,'y',1)
         backgroundColor = [0 0 0];
         bot.Label = '';
         top.Label = '';
-        text(0.01*diamImageW,6,['microns/pixel: ' num2str(linearizedMicronsPerPixel(r))],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1);
-        text(0.01*diamImageW,22,['median vessel width (pixels): ' num2str(diamInPixels)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1);
-        text(0.01*diamImageW,38,['median vessel width (microns): ' num2str(diamInMicrons)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1);
+        text(0.01*diamImageW,6,['microns/pixel: ' num2str(linearizedMicronsPerPixel(r))],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',diamAx);
+        text(0.01*diamImageW,22,['median vessel width (pixels): ' num2str(diamInPixels)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',diamAx);
+        text(0.01*diamImageW,38,['median vessel width (microns): ' num2str(diamInMicrons)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',diamAx);
 
-        vesselWidthImage = getframe(fig4);
+        vesselWidthImage = getframe(diamFig);
         vesselWidthImage = vesselWidthImage.cdata;
         vesselWidthImage = imresize(vesselWidthImage,[diamImageH diamImageW]);
         saveastiff(vesselWidthImage,fullfile(filePath,['AL4_ROI' num2str(r) '_LinescanVesselWidth_' pmtFilename(1:extInd-1) '.tif']),tifoptions);
-        close(gcf)
+        close(diamFig)
     end
 end
 
@@ -610,50 +610,50 @@ vesselDiameterInMicronsSnap = [];
 if strncmpi(getVesselWidthSnap,'y',1)
     for r = flowRois
         %crop the snapshot around the line
-        fig = figure();
-        ax = axes();
-        imshow(snapshot);
-        fig.Position = [0 0 imageW imageH];
-        ax.Position = [0 0 1 1];
+        snapFig = figure();
+        snapAx = axes();
+        imshow(snapshot,'Parent',snapAx);
+        snapFig.Position = [0 0 imageW imageH];
+        snapAx.Position = [0 0 1 1];
         cropRange = 200; %# of pixels around the line center to crop
-        xlim([centerXPix(r)-cropRange centerXPix(r)+cropRange]); %crop in x
-        ylim([centerYPix(r)-cropRange centerYPix(r)+cropRange]); %crop in y
-        snapWithLineCropped = getframe(fig);
+        snapAx.XLim = [centerXPix(r)-cropRange centerXPix(r)+cropRange]; %crop in x
+        snapAx.YLim = [centerYPix(r)-cropRange centerYPix(r)+cropRange]; %crop in y
+        snapWithLineCropped = getframe(snapFig);
         snapWithLineCropped = mean(snapWithLineCropped.cdata,3);
         snapWithLineCropped = imresize(snapWithLineCropped,[2*cropRange 2*cropRange]);
-        close(gcf);
+        close(snapFig);
 
         %rotate and crop the image so that the drawn vessel line is straight
         lineAngle = atan2(diff(lineYPix(r,:)),diff(lineXPix(r,:)));
         snapRotated = imrotate(snapWithLineCropped,rad2deg(lineAngle),'bilinear','crop');
         snapRotated = snapRotated/prctile(snapRotated,99,'all'); %scale brightness to more visible range
-        fig = figure();
-        ax = axes();
-        imshow(snapRotated)
-        xlim([cropRange-lineDistPix(r)/2 cropRange+lineDistPix(r)/2]); %crop image in x so it only includes the line
-        fig.Position = [0 0 lineDistPix(r) 2*cropRange];
-        ax.Position = [0 0 1 1];
+        rotFig = figure();
+        rotAx = axes();
+        imshow(snapRotated,'Parent',rotAx)
+        rotAx.XLim = [cropRange-lineDistPix(r)/2 cropRange+lineDistPix(r)/2]; %crop image in x so it only includes the line
+        rotFig.Position = [0 0 lineDistPix(r) 2*cropRange];
+        rotAx.Position = [0 0 1 1];
 
         %get the image of the straightened/cropped vessel
-        snapVessel = getframe(fig);
+        snapVessel = getframe(rotFig);
         snapVessel = mean(snapVessel.cdata,3);
         snapVessel = imresize(snapVessel,[2*cropRange lineDistPix(r)]);
         snapVessel = snapVessel/prctile(snapVessel,99,'all');
-        close(fig)
+        close(rotFig)
 
         %draw lines around the vessel and let the user move them
-        fig3 = figure();
-        fig3.Position = [0 0 2*lineDistPix(r) 4*cropRange];
-        ax3 = axes();
-        imshow(snapVessel)
+        widthFig = figure();
+        widthFig.Position = [0 0 2*lineDistPix(r) 4*cropRange];
+        widthAx = axes();
+        imshow(snapVessel,'Parent',widthAx)
         topPos = 0.5*cropRange;
         botPos = 1.5*cropRange;
-        top = drawline('Position',[0 topPos; lineDistPix(r) topPos],'LineWidth',0.5,'label','drag to vessel top','LabelAlpha',0.2);
-        bot = drawline('Position',[0 botPos; lineDistPix(r) botPos],'LineWidth',0.5,'label','drag to vessel bottom','LabelAlpha',0.2);
-        title('estimate vessel diameter')
-        c = uicontrol(fig3,'String','set vessel edges','Callback','uiresume(gcbf)','FontSize',12);
+        top = drawline(widthAx,'Position',[0 topPos; lineDistPix(r) topPos],'LineWidth',0.5,'label','drag to vessel top','LabelAlpha',0.2);
+        bot = drawline(widthAx,'Position',[0 botPos; lineDistPix(r) botPos],'LineWidth',0.5,'label','drag to vessel bottom','LabelAlpha',0.2);
+        title(widthAx,'estimate vessel diameter')
+        c = uicontrol(widthFig,'String','set vessel edges','Callback','uiresume(gcbf)','FontSize',12);
         c.Position(3:4) = [150 30];
-        uiwait(gcf)
+        uiwait(widthFig)
         diamInPixels = abs(mean(top.Position(:,2)) - mean(bot.Position(:,2)));
         diamInMicrons = diamInPixels*framescanMicronsPerPixel; %median microns (in y) of the vessel
         vesselDiameterInMicronsSnap = [vesselDiameterInMicronsSnap diamInMicrons];
@@ -661,21 +661,21 @@ if strncmpi(getVesselWidthSnap,'y',1)
         %create vessel width estimation summary figure
         fontColor = [1 1 1];
         backgroundColor = [0 0 0];
-        fig3.Position = [0 0 lineDistPix(r) 2*cropRange];
-        ax3.Position = [0 0 1 1];
+        widthFig.Position = [0 0 lineDistPix(r) 2*cropRange];
+        widthAx.Position = [0 0 1 1];
         bot.Label = '';
         top.Label = '';
         clear c
-        text(0.01*lineDistPix(r),6,['microns/pixel: ' num2str(framescanMicronsPerPixel)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1);
-        text(0.01*lineDistPix(r),22,['median vessel width (pixels): ' num2str(diamInPixels)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1);
-        text(0.01*lineDistPix(r),38,['median vessel width (microns): ' num2str(diamInMicrons)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1);
+        text(0.01*lineDistPix(r),6,['microns/pixel: ' num2str(framescanMicronsPerPixel)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',widthAx);
+        text(0.01*lineDistPix(r),22,['median vessel width (pixels): ' num2str(diamInPixels)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',widthAx);
+        text(0.01*lineDistPix(r),38,['median vessel width (microns): ' num2str(diamInMicrons)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',widthAx);
 
         %save figure as tif
-        vesselWidthImage = getframe(fig3);
+        vesselWidthImage = getframe(widthFig);
         vesselWidthImage = vesselWidthImage.cdata;
         vesselWidthImage = imresize(vesselWidthImage,[2*cropRange lineDistPix(r)]);
         saveastiff(vesselWidthImage,fullfile(filePath,['AL5_ROI' num2str(r) '_SnapshotVesselWidth_' pmtFilename(1:extInd-1) '.tif']),tifoptions,imgdescr);
-        close(gcf)
+        close(widthFig)
     end
 end
 
