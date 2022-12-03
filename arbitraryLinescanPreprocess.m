@@ -140,7 +140,7 @@ assert(exist('saveastiff','file')==2,'The function "saveastiff()" is not found i
 
 %% check for necessary files
 %get linescan data filename/path
-[pmtFilename, path] = uigetfile('*.pmt.dat','select the .pmt.dat file');
+[pmtFilename, filePath] = uigetfile('*.pmt.dat','select the .pmt.dat file');
 if pmtFilename==0
     return;
 end
@@ -150,19 +150,20 @@ assert(~isempty(extInd)&&length(extInd)==1,'selected file is not a .pmt.dat file
 
 %check that metadata .txt file exists in the same folder, with the same base name
 metaFilename = [pmtFilename(1:extInd-1) '.meta.txt'];
-assert(isfile(fullfile(path,metaFilename)),['cannot find metadata txt file ' metaFilename]);
+assert(isfile(fullfile(filePath,metaFilename)),['cannot find metadata txt file ' metaFilename]);
 
 %check that scanner .dat file exists in the same folder, with the same base name
 scnnrFilename = [pmtFilename(1:extInd-1) '.scnnr.dat'];
-assert(isfile(fullfile(path,scnnrFilename)),['cannot find scanner .dat file ' scnnrFilename]);
+assert(isfile(fullfile(filePath,scnnrFilename)),['cannot find scanner .dat file ' scnnrFilename]);
 
 %get snapshot .tif filename
 if strncmpi(getVesselWidthSnap,'y',1)
-    tifFiles = ls(fullfile(path,'*.tif'));
-    if ~isempty(tifFiles) && size(tifFiles,1)==1
-        snapName = tifFiles;
+    tifFiles = dir(fullfile(filePath,'*.tif'));
+    if ~isempty(tifFiles) && length(tifFiles)==1
+        snapName = tifFiles.name;
+        snapPath = filePath;
     else
-        snapName = uigetfile(fullfile(path,'*.tif'),'select the snapshot .tif file');
+        [snapName, snapPath] = uigetfile(fullfile(filePath,'*.tif'),'select the snapshot .tif file');
         if snapName==0
             return;
         end
@@ -172,11 +173,11 @@ end
 
 %% get various metadata from linescan metadata text file
 %get date created
-metaFileDir = dir(fullfile(path,metaFilename));
+metaFileDir = dir(fullfile(filePath,metaFilename));
 date = metaFileDir.date;
 
 %load metadata text
-fileID = fopen(fullfile(path,metaFilename),'r');
+fileID = fopen(fullfile(filePath,metaFilename),'r');
 metadataTxt = fscanf(fileID,'%c');
 
 %get imaging parameters
@@ -228,15 +229,12 @@ numFeedbackChannels = eval(char(extractBetween(metadataTxt,'SI.hScan2D.lineScanN
 
 %if snapshot exists, use header info instead
 if strncmpi(getVesselWidthSnap,'y',1)
-    snapshot = imread(fullfile(path,snapName),vesselChannel);
-    imgdescr = '';
-    % Tiff doesn't always work on macs?
-%     T = Tiff(fullfile(path,snapName));
-%     setDirectory(T,vesselChannel)
-%     snapshot = read(T);
-%     [imageH,imageW] = size(snapshot);
-%     imgdescr = getTag(T,'ImageDescription');
-%     date = datetime(eval(char(extractBetween(imgdescr, 'epoch = ', newline))));
+    T = Tiff(fullfile(snapPath,snapName));
+    setDirectory(T,vesselChannel)
+    snapshot = read(T);
+    [imageH,imageW] = size(snapshot);
+    imgdescr = getTag(T,'ImageDescription');
+    date = datetime(eval(char(extractBetween(imgdescr, 'epoch = ', newline))));
 end
 
 %get microns/pix measureent
@@ -336,7 +334,7 @@ end
 waitfig = waitbar(0,'Loading arbitrary linescan data...');
 
 % get linescan position data from scanner
-fileID = fopen(fullfile(path,scnnrFilename));
+fileID = fopen(fullfile(filePath,scnnrFilename));
 data = fread(fileID,'single');
 scannerPos = reshape(data,numFeedbackChannels,scannerSamplesPerFrame,[]);
 scannerPos = permute(scannerPos,[2 3 1]);
@@ -346,7 +344,7 @@ scannerPosTime = (0:scannerSamplesPerFrame-1)/sampleRateFeedback;
 % fullScannerPosTime = (0:numScannerSamples-1)/sampleRateFeedback;
 
 %read linescan data
-fileID = fopen(fullfile(path,pmtFilename));
+fileID = fopen(fullfile(filePath,pmtFilename));
 data = fread(fileID,'int16');
 linescanData = reshape(data,numChannels,samplesPerFrame,[]);
 linescanData = linescanData(vesselChannel,:,:);
@@ -365,7 +363,7 @@ if length(scannerPosTime)~=length(linescanTime) || any(scannerPosTime~=linescanT
         medScannerPosFull(:,2) = fillmissing(medScannerPosFull(:,2),'makima');
         fitInds = false(size(linescanTime)); %no fit needed
     else 
-        fprintf(['Only ' num2str(100*round(scannerPosTime(end)/linescanTime(end))) ' percent of scan position was logged -- missing positions will be estimated.\n']);
+        fprintf(['Only ' num2str(round(100*(scannerPosTime(end)/linescanTime(end)))) ' percent of scan position was logged -- missing positions will be estimated.\n']);
         %fit fourier series to position data to replace missing points and interpolate values
         period = (samplesPerFrame/sampleRateLinescan);
         tripleTime = [scannerPosTime'; period+scannerPosTime'; (2*period)+scannerPosTime'];
@@ -522,7 +520,7 @@ xlabel('x scan angle (deg)')
 set(gca,'YDir','reverse')
 
 %save figure as tiff
-saveas(fig1,fullfile(path,['AL3_AllROIs_' pmtFilename(1:extInd-1) '.tif']));
+saveas(fig1,fullfile(filePath,['AL3_AllROIs_' pmtFilename(1:extInd-1) '.tif']));
   
 
 %% create tif file of linescan data (for line ROI(s) only)
@@ -550,7 +548,7 @@ for r = flowRois
         tifoptions.big = true; % "big" option uses 64-bit addressing
     end
     linescanSavename = ['AL1_ROI' num2str(r) '_LinescanCh' num2str(vesselChannel) '_' pmtFilename(1:extInd-1) '.tif'];
-    tifFilename = fullfile(path,linescanSavename);
+    tifFilename = fullfile(filePath,linescanSavename);
     saveastiff(linescanTif,tifFilename,tifoptions,metadataTxt);
 end
 
@@ -601,7 +599,7 @@ if strncmpi(getVesselWidthLine,'y',1)
         vesselWidthImage = getframe(fig4);
         vesselWidthImage = vesselWidthImage.cdata;
         vesselWidthImage = imresize(vesselWidthImage,[diamImageH diamImageW]);
-        saveastiff(vesselWidthImage,fullfile(path,['AL4_ROI' num2str(r) '_LinescanVesselWidth_' pmtFilename(1:extInd-1) '.tif']),tifoptions);
+        saveastiff(vesselWidthImage,fullfile(filePath,['AL4_ROI' num2str(r) '_LinescanVesselWidth_' pmtFilename(1:extInd-1) '.tif']),tifoptions);
         close(gcf)
     end
 end
@@ -676,7 +674,7 @@ if strncmpi(getVesselWidthSnap,'y',1)
         vesselWidthImage = getframe(fig3);
         vesselWidthImage = vesselWidthImage.cdata;
         vesselWidthImage = imresize(vesselWidthImage,[2*cropRange lineDistPix(r)]);
-        saveastiff(vesselWidthImage,fullfile(path,['AL5_ROI' num2str(r) '_SnapshotVesselWidth_' pmtFilename(1:extInd-1) '.tif']),tifoptions,imgdescr);
+        saveastiff(vesselWidthImage,fullfile(filePath,['AL5_ROI' num2str(r) '_SnapshotVesselWidth_' pmtFilename(1:extInd-1) '.tif']),tifoptions,imgdescr);
         close(gcf)
     end
 end
@@ -691,7 +689,7 @@ results.vesselDiameterInMicronsSnap = vesselDiameterInMicronsSnap;
 results.vesselDiameterInMicronsLine = vesselDiameterInMicronsLine;
 results.bloodflowMicronsPerPixel = linearizedMicronsPerPixel(flowRois);
 results.linescanMsPerLine = linescanMsPerLine;
-save(fullfile(path,resultsSavename),'results');
+save(fullfile(filePath,resultsSavename),'results');
 
 %print results in a messagebox
 % txt1 = strcat("framescan microns/pixel: ",num2str(micronsPerPixel));
@@ -701,7 +699,7 @@ txt3 = strcat("estimated vessel diameter from snapshot (microns): ", num2str(ves
 txt4 = strcat("estimated vessel diameter from linescan (microns): ", num2str(vesselDiameterInMicronsLine));
 txt5 = strcat("blood flow microns/pixel: ", num2str(linearizedMicronsPerPixel(flowRois)));
 txt6 = strcat("linescan ms/line: ", num2str(linescanMsPerLine));
-txt7 = strcat("results saved in '", path, "'");
+txt7 = strcat("results saved in '", filePath, "'");
 
 msgText = ["Pre-processing complete";"";txt1;txt2];
 if strncmpi(getVesselWidthSnap,'y',1)
