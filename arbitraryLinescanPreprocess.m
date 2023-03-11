@@ -290,20 +290,19 @@ else %have user verify that the line is drawn correctly
     diamRois = 2:2:numRois;
     roiFig = figure();
     roiAx = axes();
+    hold on
     if strncmpi(getVesselWidthSnap,'y',1)
         imshow(snapshot,'Parent',roiAx)
-        hold on
     end
     legendNames = cell(1,numRois);
     for r = 1:numRois
         plot(lineXPix(r,:),lineYPix(r,:),'Color',plotColors(r,:),'LineWidth',3,'Parent',roiAx); %plot the linescan line over the snapshot
-        hold on
         legendNames{r} = ['ROI ' num2str(r)];
     end
+    roiAx.XLim = [1 imageW];
+    roiAx.YLim = [1 imageH];
     set(roiAx,'YDir','reverse')
-    roiAx.xlim = [1 imageW];
-    roiAx.ylim = [1 imageH];
-    legend(legendNames,'Parent',roiAx)
+    legend(legendNames,'Parent',roiFig)
     title('Line position','Parent',roiAx)
     
     prompt={'ROIs for blood flow measurement:','ROIs for diameter measurement:'};
@@ -314,8 +313,12 @@ else %have user verify that the line is drawn correctly
     
     flowRois = str2num(answer{1});
     diamRois = str2num(answer{2});
-    assert(any(flowRois'==(1:numRois),2),'Invalid blood flow ROI number entered')
-    assert(any(diamRois'==(1:numRois),2),'Invalid diameter ROI number entered')
+    if ~isempty(flowRois)
+        assert(any(flowRois'==(1:numRois),2),'Invalid blood flow ROI number entered')
+    end
+    if ~isempty(diamRois)
+        assert(any(diamRois'==(1:numRois),2),'Invalid diameter ROI number entered')
+    end
     close(roiFig)
 end
 roiNames = [];
@@ -357,10 +360,11 @@ linescanTime = (0:samplesPerFrame-1)/sampleRateLinescan;
 if length(scannerPosTime)~=length(linescanTime) || any(scannerPosTime~=linescanTime)
     if (scannerPosTime(end)/linescanTime(end))>0.95
         %resample scanner pos to match linescan sample rate
-        medScannerPosFull = align_data(medScannerPos(:,1),scannerPosTime',linescanTime');
+        medScannerPosFull = align_data(medScannerPos(:,1)',scannerPosTime,linescanTime);
         medScannerPosFull = fillmissing(medScannerPosFull,'makima');
-        medScannerPosFull(:,2) = align_data(medScannerPos(:,2),scannerPosTime',linescanTime');
-        medScannerPosFull(:,2) = fillmissing(medScannerPosFull(:,2),'makima');
+        medScannerPosFull(2,:) = align_data(medScannerPos(:,2)',scannerPosTime,linescanTime);
+        medScannerPosFull(2,:) = fillmissing(medScannerPosFull(2,:),'makima');
+        medScannerPosFull = medScannerPosFull';
         fitInds = false(size(linescanTime)); %no fit needed
     else 
         fprintf(['Only ' num2str(round(100*(scannerPosTime(end)/linescanTime(end)))) ' percent of scan position was logged -- missing positions will be estimated.\n']);
@@ -386,8 +390,15 @@ end
 roiInds = false(numRois,samplesPerFrame);
 linearizedLinescans = cell(numRois,1);
 linearizedMicronsPerPixel = nan(numRois,1);
-for r = 1:numRois
-    waitfig = waitbar(0.1 + (0.9/numRois)*(r-1),waitfig,['Linearizing data for ROI ' num2str(r) '...']);
+if strncmpi(getVesselWidthLine,'y',1)
+    roisToLinearize = [flowRois diamRois];
+else
+    roisToLinearize = flowRois;
+end
+numRoisToLinearize = length(roisToLinearize);
+for rl = 1:numRoisToLinearize
+    r = roisToLinearize(rl);
+    waitfig = waitbar(0.1 + (0.9/numRoisToLinearize)*(rl-1),waitfig,['Linearizing data for ROI ' num2str(r) '...']);
     
     %rotate ROI so that it's horizontal
     lineXY = ([lineXDeg(r,:)' lineYDeg(r,:)']) - repmat(centerXY(r,:),[2 1]);
@@ -555,35 +566,39 @@ end
 
 %% (optional) get vessel diameter from linescan diameter ROI
 vesselDiameterInMicronsLine = [];
+vesselDiameterInMicronsLineVec = [];
 if strncmpi(getVesselWidthLine,'y',1)
+    vesselDiameterInMicronsLineVec = nan(numLines,length(diamRois));
     for r = diamRois
         diamImage = linearizedLinescans{r};
         diamImageH = size(diamImage,1);
-        diamImageW = 512;
-        diamImage = imresize(diamImage,[diamImageH diamImageW]); %create image of these inds,
-        diamImage = diamImage/prctile(diamImage,99,'all');
+        diamImageLargeW = 512;
+        diamImageLargeH = 256;
+        diamImageLarge = imresize(diamImage,[diamImageLargeH diamImageLargeW]); %create image
+        diamImageLarge = diamImageLarge/prctile(diamImageLarge,99,'all');
 
         %have the user calculate the edges of the vessel
         diamFig = figure(); %have user move lines for diameter
         diamAx = axes();
-        imshow(diamImage,'Parent',diamAx)
-        topPos = diamImageH*0.25;
-        botPos = diamImageH*0.75;
-        top = drawline(diamAx,'Position',[0 topPos; diamImageW topPos],'LineWidth',0.5,'label','drag to vessel top','LabelAlpha',0.2);
-        bot = drawline(diamAx,'Position',[0 botPos; diamImageW botPos],'LineWidth',0.5,'label','drag to vessel bottom','LabelAlpha',0.2);
+        imshow(diamImageLarge,'Parent',diamAx)
+        topPos = diamImageLargeH*0.25;
+        botPos = diamImageLargeH*0.75;
+        top = drawline(diamAx,'Position',[0 topPos; diamImageLargeW topPos],'LineWidth',0.5,'label','drag to approx. vessel top','LabelAlpha',0.2);
+        bot = drawline(diamAx,'Position',[0 botPos; diamImageLargeW botPos],'LineWidth',0.5,'label','drag to approx. vessel bottom','LabelAlpha',0.2);
         title(diamAx,'estimate vessel diameter')
-        diamFig.Position = [100 100 diamImageW diamImageH];
+        diamFig.Position = [100 100 diamImageLargeW diamImageLargeH];
         diamAx.Position = [0 0 1 1];
         c = uicontrol(diamFig,'String','set vessel edges','Callback','uiresume(gcbf)','FontSize',12);
         c.Position(3:4) = [150 30];
         uiwait(diamFig)
         clear c
-        diamRows = find(roiInds(r,:));
-        topInd = diamRows(round(mean(top.Position(:,2)))); %index of scanner position on top side of vessel
-        botInd = diamRows(round(mean(bot.Position(:,2)))); %index of scanner position on bottom side of vessel
-
+        topPixelAdj = mean(top.Position(:,2));
+        botPixelAdj = mean(bot.Position(:,2));
+        topPixel = round(topPixelAdj*(diamImageH/diamImageLargeH));
+        botPixel = round(botPixelAdj*(diamImageH/diamImageLargeH));
+        
         %find vessel width
-        diamInPixels = abs(topInd-botInd);
+        diamInPixels = abs(topPixel-botPixel);
         diamInMicrons = diamInPixels*linearizedMicronsPerPixel(r); %median microns (in y) of the vessel
         vesselDiameterInMicronsLine = [vesselDiameterInMicronsLine diamInMicrons];
         
@@ -592,15 +607,87 @@ if strncmpi(getVesselWidthLine,'y',1)
         backgroundColor = [0 0 0];
         bot.Label = '';
         top.Label = '';
-        text(0.01*diamImageW,6,['microns/pixel: ' num2str(linearizedMicronsPerPixel(r))],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',diamAx);
-        text(0.01*diamImageW,22,['median vessel width (pixels): ' num2str(diamInPixels)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',diamAx);
-        text(0.01*diamImageW,38,['median vessel width (microns): ' num2str(diamInMicrons)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',diamAx);
+        text(0.01*diamImageLargeW,6,['microns/pixel: ' num2str(linearizedMicronsPerPixel(r))],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',diamAx);
+        text(0.01*diamImageLargeW,22,['median vessel width (pixels): ' num2str(diamInPixels)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',diamAx);
+        text(0.01*diamImageLargeW,38,['median vessel width (microns): ' num2str(diamInMicrons)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',diamAx);
 
+        %capture figure
         vesselWidthImage = getframe(diamFig);
         vesselWidthImage = vesselWidthImage.cdata;
-        vesselWidthImage = imresize(vesselWidthImage,[diamImageH diamImageW]);
-        saveastiff(vesselWidthImage,fullfile(filePath,['AL4_ROI' num2str(r) '_LinescanVesselWidth_' pmtFilename(1:extInd-1) '.tif']),tifoptions);
+        vesselWidthImage = imresize(vesselWidthImage,[diamImageLargeH diamImageLargeW]);
         close(diamFig)
+        
+        %create estimate of vessel diameter time-series
+        %get average brightness inside/just outside user-identified vessel
+        AvgIn = median(diamImage(topPixel:botPixel,:),'all');
+        AvgOut = median(diamImage([1:topPixel-1 botPixel+1:end],:),'all');
+        AvgTop = median(diamImage(1:topPixel-1,:),'all');
+        AvgBot = median(diamImage(botPixel+1:end,:),'all');
+        MiddleTopIn = mean([AvgTop AvgIn]);
+        MiddleBotIn = mean([AvgBot AvgIn]);
+        diamImageFilt = medfilt2(diamImage,[ceil(0.75*diamInPixels) 1]);
+        diamImageMean = mean(diamImage,2);
+        
+        %create an array of vessel sizes, in 1 pixel increments between
+        %50-150% of starting vessel width
+        imageSizes = round(0.5*diamImageH):round(1.5*diamImageH);
+        numSizes = length(imageSizes);
+        diamImageMeanSized = repmat(diamImageMean,[1 numSizes]);
+        for s = 1:numSizes
+            curSize = imageSizes(s);
+            newImage = imresize(diamImageMean,[imageSizes(s) 1]);
+            if curSize<diamImageH
+                tmp = nan(diamImageH,1);
+                startind = round((diamImageH-curSize)/2);
+                tmp(startind:(startind+curSize-1)) = newImage;
+                newImage = fillmissing(tmp,'nearest');
+                diamImageMeanSized(:,s) = newImage;
+            elseif curSize>diamImageH
+                startind = round((curSize-diamImageH)/2);
+                newImage = newImage(startind:(startind+diamImageH-1));
+                diamImageMeanSized(:,s) = newImage;
+            end
+        end
+        
+        %now look for vessel size with best correlation
+        vesselWidthVec = nan(1,numLines);
+        waitfig = waitbar(0,['Estimating vessel width time-series for ROI ' num2str(r) '...']);
+        for l = 1:numLines
+            if mod(l,1000)==0
+                waitfig = waitbar((l/numLines),waitfig);
+            end
+            sizeCorr = nan(1,numSizes);
+            for s = 1:numSizes
+                c = xcorr(diamImageMeanSized(:,s),diamImageFilt(:,l),'normalized');
+                sizeCorr(s) = max(c);
+            end
+            [~, bestSizeInd] = max(sizeCorr);
+            bestSize = imageSizes(bestSizeInd);
+            vesselWidthVec(l) = (bestSize/diamImageH)*diamInMicrons;
+        end
+        close(waitfig)
+        
+        %save data
+        diamroi_ind = diamRois==r;
+        vesselDiameterInMicronsLineVec(:,diamroi_ind) = vesselWidthVec;
+        
+        %create plot of vessel width vector
+        diamVecFig = figure();
+        diamVecFig.Position = [100 100 diamImageLargeW diamImageLargeH];
+        plot(vesselWidthVec,'b')
+        hold on
+        plot(repmat(diamInMicrons,[1,numLines]),'--w','LineWidth',1)
+        title('Vessel Width Time-Series')
+        ylabel('vessel width (microns)')
+        xlabel('line #')
+        
+        %capture plot
+        vesselWidthVecImage = getframe(diamVecFig);
+        vesselWidthVecImage = vesselWidthVecImage.cdata;
+        vesselWidthVecImage = imresize(vesselWidthVecImage,[diamImageLargeH diamImageLargeW]);
+        close(diamVecFig)
+        
+        saveastiff([vesselWidthImage vesselWidthVecImage],fullfile(filePath,['AL4_ROI' num2str(r) '_LinescanVesselWidth_' pmtFilename(1:extInd-1) '.tif']),tifoptions);
     end
 end
 
@@ -687,6 +774,7 @@ results.bloodFlowROIs = flowRois;
 results.diameterROIs = diamRois;
 results.vesselDiameterInMicronsSnap = vesselDiameterInMicronsSnap;
 results.vesselDiameterInMicronsLine = vesselDiameterInMicronsLine;
+results.vesselDiameterInMicronsLineVec = vesselDiameterInMicronsLineVec;
 results.bloodflowMicronsPerPixel = linearizedMicronsPerPixel(flowRois);
 results.linescanMsPerLine = linescanMsPerLine;
 save(fullfile(filePath,resultsSavename),'results');
