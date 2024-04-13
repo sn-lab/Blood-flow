@@ -444,9 +444,9 @@ for f = 1:numLinescansToProcess
         if (scannerPosTime(end)/linescanTime(end))>0.95
             %resample scanner pos to match linescan sample rate
             medScannerPosFull = align_data(medScannerPos(:,1)',scannerPosTime,linescanTime);
-            medScannerPosFull = fillmissing(medScannerPosFull,'makima');
+            medScannerPosFull = fillmissing(medScannerPosFull,'makima','MissingLocations',isnan(medScannerPosFull));
             medScannerPosFull(2,:) = align_data(medScannerPos(:,2)',scannerPosTime,linescanTime);
-            medScannerPosFull(2,:) = fillmissing(medScannerPosFull(2,:),'makima');
+            medScannerPosFull(2,:) = fillmissing(medScannerPosFull(2,:),'makima','MissingLocations',isnan(medScannerPosFull(2,:)));
             medScannerPosFull = medScannerPosFull';
             fitInds = false(size(linescanTime)); %no fit needed
         else 
@@ -542,7 +542,7 @@ for f = 1:numLinescansToProcess
             end
             tmp = align_data(unalignedY(:,i)',unalignedX,alignedX);
             tmp2 = tmp(startInd:stopInd); %fill in any missing data, but only inside the linescan
-            tmp2 = fillmissing(tmp2,'linear');
+            tmp2 = fillmissing(tmp2,'linear','MissingLocations',isnan(tmp2));
             tmp(startInd:stopInd) = tmp2;
             tmp(isnan(tmp)) = 0;
             tmpLinearizedLinescans(:,i) = tmp;
@@ -724,7 +724,7 @@ for f = 1:numLinescansToProcess
                     tmp = nan(diamImageH,1);
                     startind = round((diamImageH-curSize)/2);
                     tmp(startind:(startind+curSize-1)) = newImage;
-                    newImage = fillmissing(tmp,'nearest');
+                    newImage = fillmissing(tmp,'nearest','MissingLocations',isnan(tmp));
                     diamImageMeanSized(:,s) = newImage;
                 elseif curSize>diamImageH
                     startind = round((curSize-diamImageH)/2);
@@ -796,8 +796,10 @@ for f = 1:numLinescansToProcess
 
             %rotate and crop the image so that the drawn vessel line is straight
             lineAngle = atan2(diff(lineYPix(r,:)),diff(lineXPix(r,:)));
+            snapWithLineCropped = snapWithLineCropped-prctile(snapWithLineCropped,1,'all'); %subtract background
+            snapWithLineCropped = snapWithLineCropped/prctile(snapWithLineCropped,99,'all'); %scale brightness to fill visible range
             snapRotated = imrotate(snapWithLineCropped,rad2deg(lineAngle),'bilinear','crop');
-            snapRotated = snapRotated/prctile(snapRotated,99,'all'); %scale brightness to more visible range
+            % snapRotated = snapRotated/prctile(snapRotated,99,'all'); %scale brightness to more visible range
             rotFig = figure();
             rotAx = axes();
             imshow(snapRotated,'Parent',rotAx)
