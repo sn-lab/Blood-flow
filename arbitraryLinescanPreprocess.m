@@ -512,12 +512,21 @@ for f = 1:numLinescansToProcess
         [~,biggestComp] = max(numPixels);
         nearRoiIdx = false(1,samplesPerFrame);
         nearRoiIdx(CC.PixelIdxList{biggestComp}) = true;
+        assert(~all(nearRoiIdx==0),'cannot find linescan positions near ROI')
 
         %restrict roiInds to a single direction along the ROI (ignore turnaround during "pauses" that are still near the ROI)
         scanVelocityAlongRoi = [0 diff(rotScanPos(:,1)')];
+        scanVelocityAlongRoi = conv(scanVelocityAlongRoi, ones(1,5), 'same');
         scanVelocityAlongNearRoi = zeros(1,samplesPerFrame);
         scanVelocityAlongNearRoi(nearRoiIdx) = scanVelocityAlongRoi(nearRoiIdx);
         medianVelNearRoi = median(scanVelocityAlongNearRoi(nearRoiIdx));
+        while medianVelNearRoi==0 %if there is equal velocity in both directions, restrict search to more central region of linescan
+            n5 = ceil(sum(nearRoiIdx)/20); %5 percent length of near-ROI linescan
+            outerInds = [find(nearRoiIdx,n5,"first") find(nearRoiIdx,n5,"last")]; %remove first and last 5%
+            nearRoiIdx(outerInds) = false;
+            assert(~all(nearRoiIdx==0),'cannot determine scan direction along ROI')
+            medianVelNearRoi = median(scanVelocityAlongNearRoi(nearRoiIdx));
+        end
         scanDirectionNearRoiCenter = medianVelNearRoi/abs(medianVelNearRoi);
         roiInds(r,:) = nearRoiIdx & (scanDirectionNearRoiCenter*scanVelocityAlongNearRoi)>0;
         roiRows = find(roiInds(r,:));
