@@ -823,41 +823,51 @@ for f = 1:numLinescansToProcess
             snapVessel = snapVessel/prctile(snapVessel,99,'all');
             close(rotFig)
 
-            %draw lines around the vessel and let the user move them
-            widthFig = figure();
-            widthFig.Position = [0 0 2*lineDistPix(r) 4*cropRange];
-            widthAx = axes();
-            imshow(snapVessel,'Parent',widthAx)
-            topPos = 0.5*cropRange;
-            botPos = 1.5*cropRange;
-            top = drawline(widthAx,'Position',[0 topPos; lineDistPix(r) topPos],'LineWidth',0.5,'label','drag to vessel top','LabelAlpha',0.2);
-            bot = drawline(widthAx,'Position',[0 botPos; lineDistPix(r) botPos],'LineWidth',0.5,'label','drag to vessel bottom','LabelAlpha',0.2);
-            title(widthAx,'estimate vessel diameter')
-            c = uicontrol(widthFig,'String','set vessel edges','Callback','uiresume(gcbf)','FontSize',12);
-            c.Position(3:4) = [150 30];
-            uiwait(widthFig)
-            diamInPixels = abs(mean(top.Position(:,2)) - mean(bot.Position(:,2)));
+            % %OLD METHOD (drag lines to top and bottom of vessel)
+            % %draw lines around the vessel and let the user move them
+            % widthFig = figure();
+            % widthFig.Position = [0 0 2*lineDistPix(r) 4*cropRange];
+            % widthAx = axes();
+            % imshow(snapVessel,'Parent',widthAx)
+            % topPos = 0.5*cropRange;
+            % botPos = 1.5*cropRange;
+            % top = drawline(widthAx,'Position',[0 topPos; lineDistPix(r) topPos],'LineWidth',0.5,'label','drag to vessel top','LabelAlpha',0.2);
+            % bot = drawline(widthAx,'Position',[0 botPos; lineDistPix(r) botPos],'LineWidth',0.5,'label','drag to vessel bottom','LabelAlpha',0.2);
+            % title(widthAx,'estimate vessel diameter')
+            % c = uicontrol(widthFig,'String','set vessel edges','Callback','uiresume(gcbf)','FontSize',12);
+            % c.Position(3:4) = [150 30];
+            % uiwait(widthFig)
+            % diamInPixels = abs(mean(top.Position(:,2)) - mean(bot.Position(:,2)));
+            % diamInMicrons = diamInPixels*framescanMicronsPerPixel; %median microns (in y) of the vessel
+            % vesselDiameterInMicronsSnap = [vesselDiameterInMicronsSnap diamInMicrons];
+            % 
+            % %create vessel width estimation summary figure
+            % fontColor = [1 1 1];
+            % backgroundColor = [0 0 0];
+            % widthFig.Position = [0 0 lineDistPix(r) 2*cropRange];
+            % widthAx.Position = [0 0 1 1];
+            % bot.Label = '';
+            % top.Label = '';
+            % clear c
+            % text(0.01*lineDistPix(r),6,['microns/pixel: ' num2str(framescanMicronsPerPixel)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',widthAx);
+            % text(0.01*lineDistPix(r),22,['median vessel width (pixels): ' num2str(diamInPixels)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',widthAx);
+            % text(0.01*lineDistPix(r),38,['median vessel width (microns): ' num2str(diamInMicrons)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',widthAx);
+            % 
+            % %save figure as tif
+            % vesselWidthImage = getframe(widthFig);
+            % vesselWidthImage = vesselWidthImage.cdata;
+            % vesselWidthImage = imresize(vesselWidthImage,[2*cropRange lineDistPix(r)]);
+            % saveastiff(vesselWidthImage,fullfile(filePath,['AL5_ROI' num2str(r) '_SnapshotVesselWidth_' basename '.tif']),tifoptions,imgdescr);
+            % close(widthFig)
+
+            %NEW METHOD (use new matlab app to draw 2-10 lines spanning vessel and calculate average width)
+            app = vesselWidthLineDrawing(snapVessel,r,filePath,basename);
+            waitfor(app.finishandexitButton,'UserData')
+            diamInPixels = app.diamInPixels;
+            app.delete
             diamInMicrons = diamInPixels*framescanMicronsPerPixel; %median microns (in y) of the vessel
             vesselDiameterInMicronsSnap = [vesselDiameterInMicronsSnap diamInMicrons];
-
-            %create vessel width estimation summary figure
-            fontColor = [1 1 1];
-            backgroundColor = [0 0 0];
-            widthFig.Position = [0 0 lineDistPix(r) 2*cropRange];
-            widthAx.Position = [0 0 1 1];
-            bot.Label = '';
-            top.Label = '';
-            clear c
-            text(0.01*lineDistPix(r),6,['microns/pixel: ' num2str(framescanMicronsPerPixel)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',widthAx);
-            text(0.01*lineDistPix(r),22,['median vessel width (pixels): ' num2str(diamInPixels)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',widthAx);
-            text(0.01*lineDistPix(r),38,['median vessel width (microns): ' num2str(diamInMicrons)],'FontSize',8,'Color',fontColor,'BackgroundColor',backgroundColor,'Margin',1,'Parent',widthAx);
-
-            %save figure as tif
-            vesselWidthImage = getframe(widthFig);
-            vesselWidthImage = vesselWidthImage.cdata;
-            vesselWidthImage = imresize(vesselWidthImage,[2*cropRange lineDistPix(r)]);
-            saveastiff(vesselWidthImage,fullfile(filePath,['AL5_ROI' num2str(r) '_SnapshotVesselWidth_' basename '.tif']),tifoptions,imgdescr);
-            close(widthFig)
+            
         end
     end
 
