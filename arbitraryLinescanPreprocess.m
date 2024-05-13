@@ -397,10 +397,10 @@ for f = 1:numLinescansToProcess
         flowRois = str2num(answer{1});
         diamRois = str2num(answer{2});
         if ~isempty(flowRois)
-            assert(any(flowRois'==(1:numRois),2),'Invalid blood flow ROI number entered')
+            assert(any(flowRois'==(1:numRois),'all'),'Invalid blood flow ROI number entered')
         end
         if ~isempty(diamRois)
-            assert(any(diamRois'==(1:numRois),2),'Invalid diameter ROI number entered')
+            assert(any(diamRois'==(1:numRois),'all'),'Invalid diameter ROI number entered')
         end
         close(roiFig)
     end
@@ -453,16 +453,24 @@ for f = 1:numLinescansToProcess
             fprintf(['Only ' num2str(round(100*(scannerPosTime(end)/linescanTime(end)))) ' percent of scan position was logged -- missing positions will be estimated.\n']);
             %fit fourier series to position data to replace missing points and interpolate values
             period = (samplesPerFrame/sampleRateLinescan);
-            tripleTime = [scannerPosTime'; period+scannerPosTime'; (2*period)+scannerPosTime'];
-            triplePos = [medScannerPos; medScannerPos; medScannerPos];
+            repeatedTime = [scannerPosTime'; period+scannerPosTime'; (2*period)+scannerPosTime' ; (3*period)+scannerPosTime' ; (4*period)+scannerPosTime'];
+            repeatedPos = [medScannerPos; medScannerPos; medScannerPos; medScannerPos; medScannerPos];
             goodnessOfFit = 0;
             numFourier = numRois*3-1;
-            while goodnessOfFit<0.95
-                numFourier = numFourier+1;
-                assert(numFourier<11,'scanner position curve could not be fit well with less than 11 terms of a fourier series');
-                [fX, gX] = fit(tripleTime,triplePos(:,1),['fourier' num2str(numFourier)]);
-                [fY, gY] = fit(tripleTime,triplePos(:,2),['fourier' num2str(numFourier)]);
+            if numFourier<8
+                while goodnessOfFit<0.95
+                    numFourier = numFourier+1;
+                    assert(numFourier<11,'scanner position curve could not be fit well with 8 terms of a fourier series');
+                    [fX, gX] = fit(repeatedTime,repeatedPos(:,1),['fourier' num2str(numFourier)]);
+                    [fY, gY] = fit(repeatedTime,repeatedPos(:,2),['fourier' num2str(numFourier)]);
+                    goodnessOfFit = gX.adjrsquare*gY.adjrsquare;
+                end
+            else
+                numFourier = 8;
+                [fX, gX] = fit(repeatedTime,repeatedPos(:,1),['fourier' num2str(numFourier)]);
+                [fY, gY] = fit(repeatedTime,repeatedPos(:,2),['fourier' num2str(numFourier)]);
                 goodnessOfFit = gX.adjrsquare*gY.adjrsquare;
+                fprintf(['missing positions fit with fourier8 (goodness of fit = ' num2str(goodnessOfFit) ')\n'])
             end
             medScannerPosFull = [fX(linescanTime) fY(linescanTime)];
             fitInds = linescanTime>scannerPosTime(end);
@@ -551,10 +559,12 @@ for f = 1:numLinescansToProcess
             end
             tmp = align_data(unalignedY(:,i)',unalignedX,alignedX);
             tmp2 = tmp(startInd:stopInd); %fill in any missing data, but only inside the linescan
-            tmp2 = fillmissing(tmp2,'linear','MissingLocations',isnan(tmp2));
-            tmp(startInd:stopInd) = tmp2;
-            tmp(isnan(tmp)) = 0;
-            tmpLinearizedLinescans(:,i) = tmp;
+            if ~isempty(tmp2)
+                tmp2 = fillmissing(tmp2,'linear','MissingLocations',isnan(tmp2));
+                tmp(startInd:stopInd) = tmp2;
+                tmp(isnan(tmp)) = 0;
+                tmpLinearizedLinescans(:,i) = tmp;
+            end
         end
         linearizedLinescans(r) = {tmpLinearizedLinescans};
         linearizedMicronsPerPixel(r) = lineDistMicrons(r)/linearSamplesPerFrame;
