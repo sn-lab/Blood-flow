@@ -458,20 +458,20 @@ for f = 1:numLinescansToProcess
             goodnessOfFit = 0;
             numFourier = numRois*3-1;
             if numFourier<8
-                while goodnessOfFit<0.95
-                    numFourier = numFourier+1;
-                    assert(numFourier<11,'scanner position curve could not be fit well with 8 terms of a fourier series');
+                while goodnessOfFit<0.95 && numFourier<9
                     [fX, gX] = fit(repeatedTime,repeatedPos(:,1),['fourier' num2str(numFourier)]);
                     [fY, gY] = fit(repeatedTime,repeatedPos(:,2),['fourier' num2str(numFourier)]);
                     goodnessOfFit = gX.adjrsquare*gY.adjrsquare;
+                    numFourier = numFourier+1;
                 end
+                numFourier = numFourier-1;
             else
                 numFourier = 8;
                 [fX, gX] = fit(repeatedTime,repeatedPos(:,1),['fourier' num2str(numFourier)]);
                 [fY, gY] = fit(repeatedTime,repeatedPos(:,2),['fourier' num2str(numFourier)]);
                 goodnessOfFit = gX.adjrsquare*gY.adjrsquare;
-                fprintf(['missing positions fit with fourier8 (goodness of fit = ' num2str(goodnessOfFit) ')\n'])
             end
+            fprintf(['missing positions fit with fourier' num2str(numFourier) ' (goodness of fit = ' num2str(goodnessOfFit) ')\n'])
             medScannerPosFull = [fX(linescanTime) fY(linescanTime)];
             fitInds = linescanTime>scannerPosTime(end);
         end
