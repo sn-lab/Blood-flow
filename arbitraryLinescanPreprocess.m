@@ -7,24 +7,28 @@ function varargout = arbitraryLinescanPreprocess(varargin)
 % linescan (with one or more ROIs) and outputs the linescan data to a 
 % tif stack that can be fed into scripts for measuring blood flow speed 
 % (i.e. the sn-lab/Blood-flow repo). Aditionally, this script pulls the 
-% ms/line from the metadata, calculates the um/pixel conversion factor, 
-% and can estimate the vessel width using either a single-frame snapshot 
-% taken alongside the linescan or using a line ROI drawn sideways across
-% the vessel.
+% ms/line from the metadata, calculates the um/pixel conversion factor 
+% (or requests it from the user),and can estimate the vessel width using 
+% either a single-frame snapshot taken alongside the linescan or using a 
+% line ROI drawn sideways across the vessel.
 % 
 % DEPENDENCIES:
 % saveastiff() (included in Blood-Flow repo: https://github.com/sn-lab/Blood-flow) 
 %              (originally from normcorre: https://github.com/flatironinstitute/NoRMCorre)
 % align_data() (included in Blood-Flow repo: https://github.com/sn-lab/Blood-flow)
-% Pixel-to-Micron (repo: https://github.com/sn-lab/Pixel-to-Micron)
+% Pixel-to-Micron (repo: https://github.com/sn-lab/Pixel-to-Micron); not
+%                   necessary if micron/pixel conversion factor is manually set
 % Image Processing Toolbox
 % Statistics and Machine Learning Toolbox
 % Curve Fitting Toolbox
 %
 % OPTIONAL INPUTS:
-% setup: the imaging setup used (e.g. 3)
+% setup: the imaging setup used (e.g. 3); used along with objective to
+%           retrieve the micron/pixel conversion of S-N lab microscopes;
+%           not used if microns/pixel is manually set
 % objective: the objective used, which must be an exact match to one listed
-%             in the Pixel-to-Micron repo (e.g. 'Olympus 20x')
+%             in the Pixel-to-Micron repo (e.g. 'Olympus 20x'); not used 
+%             if microns/pixel is manually set
 % vesselChannel: imaging channel (among the saved channels only) with 
 %                vasculature label (e.g. 4)
 % getVesselWidthSnap: whether to analyze a snapshot image of the vessel to
@@ -86,6 +90,7 @@ function varargout = arbitraryLinescanPreprocess(varargin)
 %default parameter settings
 setup = 3;
 objective = 'Olympus 25x (1300)';
+manual_mpp = 'no';
 vesselChannel = 4;
 getVesselWidthLine = 'yes';
 getVesselWidthSnap = 'no';
@@ -126,21 +131,22 @@ if nargin==7
     nearLineMicrons = varargin{6};
     nearDiamMicrons = varargin{7};
 else %ask for inputs
-    prompt = {'setup:','objective:','vessel channel:','get vessel width from linescan?','get vessel width from snapshot?','max distance (in microns) to blood flow ROI:','max distance (in microns) to diameter ROI:',};
+    prompt = {'setup:','objective:','manually set microns/pixel?','vessel channel:','get vessel width from linescan?','get vessel width from snapshot?','max distance (in microns) to blood flow ROI:','max distance (in microns) to diameter ROI:',};
     dlgtitle = 'Primary settings';
     dims = [1 50];
-    definput = {num2str(setup),objective,num2str(vesselChannel),getVesselWidthLine,getVesselWidthSnap,num2str(nearLineMicrons),num2str(nearDiamMicrons)};
+    definput = {num2str(setup),objective,manual_mpp,num2str(vesselChannel),getVesselWidthLine,getVesselWidthSnap,num2str(nearLineMicrons),num2str(nearDiamMicrons)};
     answers = inputdlg(prompt,dlgtitle,dims,definput);
     if isempty(answers)
         return;
     end
     setup = str2double(answers{1});
     objective = answers{2};
-    vesselChannel = str2double(answers{3});
-    getVesselWidthLine = answers{4};
-    getVesselWidthSnap = answers{5};
-    nearLineMicrons = str2double(answers{6});
-    nearDiamMicrons = str2double(answers{7});
+    manual_mpp = answers{3};
+    vesselChannel = str2double(answers{4});
+    getVesselWidthLine = answers{5};
+    getVesselWidthSnap = answers{6};
+    nearLineMicrons = str2double(answers{7});
+    nearDiamMicrons = str2double(answers{8});
 end
 
 %validate inputs
@@ -228,21 +234,22 @@ for f = 1:numLinescansToProcess
         scnnrFilename = [basename '.scnnr.dat'];
         
         if batchunique
-            prompt = {'setup:','objective:','vessel channel:','get vessel width from linescan?','get vessel width from snapshot?','max distance (in microns) to blood flow ROI:','max distance (in microns) to diameter ROI:',};
+            prompt = {'setup:','objective:','manually set microns/pixel?','vessel channel:','get vessel width from linescan?','get vessel width from snapshot?','max distance (in microns) to blood flow ROI:','max distance (in microns) to diameter ROI:',};
             dlgtitle = 'Primary settings';
             dims = [1 50];
-            definput = {num2str(setup),objective,num2str(vesselChannel),getVesselWidthLine,getVesselWidthSnap,num2str(nearLineMicrons),num2str(nearDiamMicrons)};
+            definput = {num2str(setup),objective,manual_mpp,num2str(vesselChannel),getVesselWidthLine,getVesselWidthSnap,num2str(nearLineMicrons),num2str(nearDiamMicrons)};
             answers = inputdlg(prompt,dlgtitle,dims,definput);
             if isempty(answers)
                 return;
             end
             setup = str2double(answers{1});
             objective = answers{2};
-            vesselChannel = str2double(answers{3});
-            getVesselWidthLine = answers{4};
-            getVesselWidthSnap = answers{5};
-            nearLineMicrons = str2double(answers{6});
-            nearDiamMicrons = str2double(answers{7});
+            manual_mpp = answers{3};
+            vesselChannel = str2double(answers{4});
+            getVesselWidthLine = answers{5};
+            getVesselWidthSnap = answers{6};
+            nearLineMicrons = str2double(answers{7});
+            nearDiamMicrons = str2double(answers{8});
         end
         
         if strncmpi(getVesselWidthSnap,'y',1)
@@ -320,21 +327,29 @@ for f = 1:numLinescansToProcess
         date = datetime(eval(char(extractBetween(imgdescr, 'epoch = ', newline))));
     end
 
-    %get microns/pix measureent
-    framescanMicronsPerPixel = getPixelSize(setup, date, objective, zoom); %microns per pixel
-    assert(~isempty(framescanMicronsPerPixel),'could not get the pixel size for this imaging configuration with Pixel-to-Micron');
-    if diff(framescanMicronsPerPixel)==0 %This measurement should be the same in x and y, but maybe not always...
-        framescanMicronsPerPixel = framescanMicronsPerPixel(1); ...so this removes the redundancy
-    else
-        error('um/pixel conversion factors are not equal in x and y dimensions with this imaging configuration; this case isn''t supported yet');
-    end
-    switch setup
-        case '3'
-            calibrationImageSize = [1024 1024];
-        case '4'
-            calibrationImageSize = [512 512];
-        otherwise
-            error(['Image resolution during pixel-to-micron calibration is unknown for setup ' setup ' (maybe Nicole knows?)']);
+    %get microns/pix measurement
+    if strncmpi(manual_mpp,'y',1) 
+        %manually set conversion factor
+        calibrationImageSize = [1024 1024];
+        answer = inputdlg('Enter the microns/pixel conversion factor of a 1024x1024 framescan for the microscope, objective, and zoom factor used during this linescan','manual microns/pixel setting');
+        framescanMicronsPerPixel = str2double(answer);
+    else 
+        %retrieve conversion factor from S-N lab spreadsheet
+        framescanMicronsPerPixel = getPixelSize(setup, date, objective, zoom); %microns per pixel
+        assert(~isempty(framescanMicronsPerPixel),'could not get the pixel size for this imaging configuration with Pixel-to-Micron');
+        if diff(framescanMicronsPerPixel)==0 %This measurement should be the same in x and y, but maybe not always...
+            framescanMicronsPerPixel = framescanMicronsPerPixel(1); ...so this removes the redundancy
+        else
+            error('um/pixel conversion factors are not equal in x and y dimensions with this imaging configuration; this case isn''t supported yet');
+        end
+        switch setup
+            case '3'
+                calibrationImageSize = [1024 1024];
+            case '4'
+                calibrationImageSize = [512 512];
+            otherwise
+                error(['Image resolution during pixel-to-micron calibration is unknown for setup ' setup ' (maybe Nicole knows?)']);
+        end
     end
     framescanMicronsPerPixel = framescanMicronsPerPixel*(calibrationImageSize(1)/imageH);
     degreesPerPixel = fovRanges(1)/imageW;
