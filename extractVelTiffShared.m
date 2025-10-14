@@ -63,22 +63,34 @@ if newfiles == 1; % User wants to enter new files
         useavg = 1;
     end
     
-    % ask if same acquisition rate and magnification for all files
-    button = questdlg('Same acquisition rate and magnification for all files?','Acquisition Rate and Magnification','Yes','No','No');
+    % ask if subtract average for all files
+    button = questdlg('Analyze arbitrary line scans? (ms/line and magnification microns/pixel will be automatically detected for arbitrary linescans)','Line Scan Type','Yes','No','Yes');
     if strcmp(button,'No')
-        sameAcqMag = 0;
+        arbls = 0;
     else
-        sameAcqMag = 1;
-        
-        prompt = {'acquisition rate (ms/line)','magnification (um/pixel)'};
-        def = {'0.6','0.1055'};%default values correspond to 3.39 (512x512) frames/s and 20x objective at 2 V scan mirror at 10x in MPScan program
-        dlgTitle = 'Processing parameters';
-        lineNo = 1;
-        answer = inputdlg(prompt,dlgTitle,lineNo,def,'on');
-        Tfactor = 1/str2double(cell2mat(answer(1))); % ypixel per ms
-        Xfactor = str2double(cell2mat(answer(2))); % microns per xpixel
+        arbls = 1;
+        sameAcqMag = 1; 
     end
     
+    if arbls==0 
+        % ask if same acquisition rate and magnification for all files
+        % if arbistrary line scan, look for table of line scan parameters
+        button = questdlg('Same acquisition rate and magnification for all files?','Acquisition Rate and Magnification','Yes','No','No');
+        if strcmp(button,'No')
+            sameAcqMag = 0;
+        else
+            sameAcqMag = 1;
+            
+            prompt = {'acquisition rate (ms/line)','magnification (um/pixel)'};
+            def = {'0.6','0.1055'};%default values correspond to 3.39 (512x512) frames/s and 20x objective at 2 V scan mirror at 10x in MPScan program
+            dlgTitle = 'Processing parameters';
+            lineNo = 1;
+            answer = inputdlg(prompt,dlgTitle,lineNo,def,'on');
+            Tfactor = 1/str2double(cell2mat(answer(1))); % ypixel per ms
+            Xfactor = str2double(cell2mat(answer(2))); % microns per xpixel
+        end
+    end
+
     UseAna = 0;%no analog signals for this version of extractVelTiffShared.m
     
     morefiles = 1;
@@ -89,6 +101,69 @@ if newfiles == 1; % User wants to enter new files
         fprintf('showing:  %s\n',Openfile)
         cd(pname);
         
+        if arbls==1
+            %check if AL0_Results.mat exists in current directory
+            if exist('AL0_Results.mat', 'file') == 2
+                load('AL0_Results.mat', 'allresults');
+                %check if allresults variable exists after loading
+                if ~exist('allresults', 'var')
+                    error('Cannot find the "allresults" data in the AL0_Results.mat file');
+                end
+            else
+                %AL0_results not found, tell the user to find it
+                choice = questdlg('AL0_Results.mat not found in current directory. Would you like to navigate to the file manually?','File Not Found','Yes', 'No', 'Yes');
+
+                switch choice
+                    case 'Yes' %user will find it manually
+                        [filename, filepath] = uigetfile('*.mat', ['select AL0_Results.mat file associated with "' fname '"']);
+                        
+                        if isequal(filename, 0)
+                            disp('file selection cancelled. Script exited.');
+                            return;
+                        else
+                            %load the selected file
+                            fullpath = fullfile(filepath, filename);
+                            load(fullpath, 'allresults');
+                            
+                            %check if results variable exists after loading
+                            if ~exist('allresults', 'var')
+                                error('Cannot find the "allresults" data in the selected .mat file');
+                            end
+                            
+                        end
+                        
+                    case 'No'
+                        % User doesn't want to navigate manually
+                        disp('AL0_Results.mat not found. Script exited.');
+                        return;
+                end
+            end
+            
+            %in allresults, search through all basenames for the current filename
+            basenameFound = false;
+
+            if isfield(allresults, 'basename')
+                for i = 1:length(allresults)
+
+                    if ~isempty(strfind(fname,allresults(i).basename))
+                        basenameFound = true;
+                        Tfactor = allresults(i).linescanMsPerLine;
+                        Xfactor = allresults(i).bloodflowMicronsPerPixel;
+                        break;
+                    end
+                end
+                
+                if ~basenameFound
+                    error(['"' fname '" was not found in the allresults struct.\n']);
+                end
+            else
+                error('The allresults struct does not contain a field named ''basename''.\n');
+            end
+
+
+
+        end
+
         % get time file was created
         fileinfo = imfinfo(Openfile);
         info= dir(pname);
@@ -105,6 +180,7 @@ if newfiles == 1; % User wants to enter new files
             end
         end
         
+
         showlines = imread(Openfile,1);
         NX = fileinfo(1).Width;
         NY = fileinfo(1).Height;

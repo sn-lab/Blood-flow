@@ -647,8 +647,9 @@ for f = 1:numLinescansToProcess
     xlabel(scanAx3,'x scan angle (deg)');
     set(scanAx3,'YDir','reverse')
 
-    %save figure as tiff
-    saveas(scanFig,fullfile(filePath,['AL3_AllROIs_' basename '.tif']));
+    %save figure
+    % saveas(scanFig,fullfile(filePath,['AL3_AllROIs_' basename '.tif'])); % save as tiff
+    print(scanFig,'-vector','-dsvg',fullfile(filePath,['AL3_AllROIs_' basename '.svg'])) % save as svg
     close(scanFig)
 
 
@@ -937,7 +938,7 @@ for f = 1:numLinescansToProcess
         end
     
     else %for batch processing, add results to a larger array   
-        allresults(f).basename = basename_without_counter;
+        allresults(f).basename = basename;
         allresults(f).bloodFlowROIs = flowRois;
         allresults(f).diameterROIs = diamRois;
         allresults(f).vesselDiameterInMicronsSnap = vesselDiameterInMicronsSnap;
