@@ -694,6 +694,7 @@ for f = 1:numLinescansToProcess
             diamImageLargeW = 512;
             diamImageLargeH = 256;
             diamImageLarge = imresize(diamImage,[diamImageLargeH diamImageLargeW]); %create image
+            diamImageLarge = diamImageLarge - prctile(diamImageLarge,1,'all');
             diamImageLarge = diamImageLarge/prctile(diamImageLarge,99,'all');
 
             %have the user calculate the edges of the vessel
@@ -846,7 +847,7 @@ for f = 1:numLinescansToProcess
             snapVessel = getframe(rotFig);
             snapVessel = mean(snapVessel.cdata,3);
             snapVessel = imresize(snapVessel,[2*cropRange lineDistPix(r)]);
-            snapVessel = snapVessel/prctile(snapVessel,99,'all');
+            % snapVessel = snapVessel/prctile(snapVessel,99,'all');
             close(rotFig)
 
             % %OLD METHOD (drag lines to top and bottom of vessel)
